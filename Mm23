@@ -241,22 +241,36 @@ end
 end,
 })
 
+-- Função para verificar se o jogador está vivo e tem character válido
+local function isPlayerAlive(player)
+if not player then return false end
+if not player.Character then return false end
+local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+if not humanoid then return false end
+if humanoid.Health <= 0 then return false end
+if not player.Character:FindFirstChild("HumanoidRootPart") then return false end
+return true
+end
+
 -- Função para verificar se um jogador é assassino
 local function isMurdererPlayer(player)
-if not player or not player.Character then return false end
+if not isPlayerAlive(player) then return false end
 local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife"))
 return hasKnife ~= nil
 end
 
 -- Função para verificar se o assassino está visível e na direção certa
 local function isMurdererVisible(murdererCharacter)
-local myCharacter = LocalPlayer.Character
-if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then return false end
+if not isPlayerAlive(LocalPlayer) then return false end
 if not murdererCharacter or not murdererCharacter:FindFirstChild("HumanoidRootPart") then return false end
 
+local myCharacter = LocalPlayer.Character
 local myRoot = myCharacter.HumanoidRootPart
 local murdererRoot = murdererCharacter.HumanoidRootPart
-local humanoid = myCharacter:FindFirstChildOfClass("Humanoid")
+
+-- Verifica se a distância não é muito grande (opcional)
+local distance = (murdererRoot.Position - myRoot.Position).Magnitude
+if distance > 150 then return false end -- Não atira se estiver muito longe
 
 -- Calcula direção para o assassino
 local directionToMurderer = (murdererRoot.Position - myRoot.Position).Unit
@@ -326,7 +340,20 @@ if not prioritizePing then return 0 end
 return 0.125
 end
 
+-- Função para verificar se tem arma
+local function hasGun()
+if not isPlayerAlive(LocalPlayer) then return false end
+local char = LocalPlayer.Character
+local backpack = LocalPlayer:FindFirstChild("Backpack")
+local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
+return gun ~= nil
+end
+
 local function shoot()
+-- Verifica se está vivo antes de atirar
+if not isPlayerAlive(LocalPlayer) then return end
+if not hasGun() then return end
+
 TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(0, 100, 0, 90)}):Play()
 task.wait(0.1)
 TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(0, 100, 0, 100)}):Play()
@@ -336,8 +363,17 @@ local backpack = LocalPlayer:FindFirstChild("Backpack")
 local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
 if not gun then return end
 
-char:FindFirstChild("Humanoid"):EquipTool(gun)
+-- Verifica novamente se ainda está vivo
+if not isPlayerAlive(LocalPlayer) then return end
+
+local humanoid = char:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+
+humanoid:EquipTool(gun)
 task.wait(0.1)
+
+-- Verifica mais uma vez antes de atirar
+if not isPlayerAlive(LocalPlayer) then return end
 
 for _, player in pairs(Players:GetPlayers()) do
 if player ~= LocalPlayer and player.Character then
@@ -356,13 +392,17 @@ elseif shootMode == "Static" then
 predicted = pos
 elseif shootMode == "Instantly" then
 predicted = pos
-char:FindFirstChild("Humanoid"):EquipTool(gun)
+if isPlayerAlive(LocalPlayer) then
+char:FindFirstChildOfClass("Humanoid"):EquipTool(gun)
+end
 end
 
-pcall(function()        
-	local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
-		:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
-	gunRemote:InvokeServer(1, predicted, "AH2")        
+pcall(function()
+if isPlayerAlive(LocalPlayer) then
+local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+gunRemote:InvokeServer(1, predicted, "AH2")
+end
 end)        
 break
 
@@ -374,8 +414,12 @@ end
 
 end
 
--- Função Auto Shoot V2 (inteligente)
+-- Função Auto Shoot V2 (inteligente) com proteção contra morte
 local function autoShootV2()
+-- Primeira verificação: está vivo e tem arma?
+if not isPlayerAlive(LocalPlayer) then return end
+if not hasGun() then return end
+
 local char = LocalPlayer.Character
 local backpack = LocalPlayer:FindFirstChild("Backpack")
 local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
@@ -388,8 +432,17 @@ if player ~= LocalPlayer and isMurdererPlayer(player) and player.Character then
 if isMurdererVisible(player.Character) then
 local root = player.Character:FindFirstChild("HumanoidRootPart")
 if root then
-char:FindFirstChild("Humanoid"):EquipTool(gun)
-task.wait(0.1)
+-- Verifica novamente se ainda está vivo antes de equipar arma
+if not isPlayerAlive(LocalPlayer) then return end
+
+local humanoid = char:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+
+humanoid:EquipTool(gun)
+task.wait(0.01)
+
+-- Última verificação antes de atirar
+if not isPlayerAlive(LocalPlayer) then return end
 
 local pos = root.Position
 local vel = root.Velocity
@@ -401,10 +454,12 @@ elseif shootMode == "Static" then
 predicted = pos
 end
 
-pcall(function()        
+pcall(function()
+if isPlayerAlive(LocalPlayer) then
 local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
 :WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
-gunRemote:InvokeServer(1, predicted, "AH2")        
+gunRemote:InvokeServer(1, predicted, "AH2")
+end
 end)
 break
 end
@@ -414,6 +469,37 @@ end
 end
 
 button.MouseButton1Click:Connect(shoot)
+
+-- Loop do Auto Shoot original com proteção
+task.spawn(function()
+while true do
+if autoShootEnabled and isPlayerAlive(LocalPlayer) then
+pcall(shoot)
+task.wait(0.5)
+else
+task.wait(1)
+end
+end
+end)
+
+-- Loop do Auto Shoot V2 (inteligente) com proteção
+task.spawn(function()
+while true do
+if autoShootV2Enabled and isPlayerAlive(LocalPlayer) then
+pcall(autoShootV2)
+task.wait(0.01) -- Verifica mais frequentemente
+else
+task.wait(1)
+end
+end
+end)
+
+-- Proteção adicional: pausa os scripts quando morre e reativa quando respawna
+LocalPlayer.CharacterAdded:Connect(function(character)
+-- Espera um pouco para o character carregar completamente
+task.wait(2)
+-- Os loops já vão detectar automaticamente que está vivo novamente
+end)
 
 -- Loop do Auto Shoot original
 task.spawn(function()
@@ -697,177 +783,7 @@ teleportToSafeSpot(map)
 task.wait(1)
 end
 
-if autofarmEnabled then        
-	local coins = getAllCoins(map)        
-	table.sort(coins, function(a, b)        
-		return (a.Position - hrp.Position).Magnitude < (b.Position - hrp.Position).Magnitude        
-	end)        
-
-	for _, coin in ipairs(coins) do        
-		if autofarmEnabled and coin and coin:IsDescendantOf(game) then        
-			local distance = (coin.Position - hrp.Position).Magnitude        
-			if distance <= 40 then        
-				pcall(function()        
-					walkTo(coin.Position + Vector3.new(0, 2.5, 0))        
-					task.wait(0.15)        
-					coinCount += 1        
-				end)        
-			end        
-		end        
-	end        
-end
-
-end
-
-end
-task.wait(0.3)
-
-end
-
-end)
-
-local AutoGetGun = { Enabled = false, CollectDistance = 5000 }
-
-local function isMurderer()
-for _, t in pairs(LocalPlayer.Character:GetChildren()) do
-if t:IsA("Tool") and t.Name == "Knife" then return true end
-end
-return false
-end
-
-local function getNearestGun()
-local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-if not root then return end
-
-local closest, dist = nil, AutoGetGun.CollectDistance
-for _, item in ipairs(Workspace:GetDescendants()) do
-if item.Name == "GunDrop" then
-local success, pos = pcall(function() return item:GetPivot().Position end)
-if success and (root.Position - pos).Magnitude < dist then
-closest = item
-dist = (root.Position - pos).Magnitude
-end
-end
-end
-return closest
-
-end
-
-local function autoGetGunLoop()
-while AutoGetGun.Enabled do
-if not isMurderer() then
-local gun = getNearestGun()
-local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-if gun and gun:IsA("BasePart") and root then
-local original = root.CFrame
-root.CFrame = CFrame.new(gun.Position + Vector3.new(0, 2, 0))
-task.wait()
-root.CFrame = original
-end
-end
-task.wait(3)
-end
-end
-
-TabAuto:CreateToggle({
-Name = "Auto Get Gun",
-CurrentValue = false,
-Flag = "AutoGetGunToggle",
-Callback = function(Value)
-AutoGetGun.Enabled = Value
-if Value then task.spawn(autoGetGunLoop) end
-end,
-})
-
-local TabAntiLag = Window:CreateTab("AntiLag", 4483362458)
-
-local antiLagSettings = {
-{ Name = "Disable Global Shadows", Action = function() Lighting.GlobalShadows = false end },
-{ Name = "Increase Fog Range", Action = function() Lighting.FogEnd = 1000000 end },
-{ Name = "Reduce Brightness", Action = function() Lighting.Brightness = 0 end },
-{ Name = "Lock Time of Day", Action = function() Lighting.ClockTime = 14 end },
-{ Name = "Remove Particles", Action = function()
-for _, v in pairs(Workspace:GetDescendants()) do
-if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Fire") or v:IsA("Smoke") then
-v.Enabled = false
-end
-end
-end },
-{ Name = "Disable Reflections", Action = function() Lighting.ReflectionIntensity = 0 end },
-{ Name = "Disable Blur", Action = function()
-local blur = Lighting:FindFirstChildOfClass("BlurEffect")
-if blur then
-blur.Enabled = false
-end
-end },
-{ Name = "Disable Depth of Field", Action = function()
-local dof = Lighting:FindFirstChildOfClass("DepthOfFieldEffect")
-if dof then
-dof.Enabled = false
-end
-end },
-{ Name = "Disable Bloom", Action = function()
-local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
-if bloom then
-bloom.Enabled = false
-end
-end },
-{ Name = "Remove Local Shadows", Action = function()
-for _, part in pairs(Workspace:GetDescendants()) do
-if part:IsA("BasePart") then
-part.CastShadow = false
-end
-end
-end },
-{ Name = "Disable Terrain Effects", Action = function()
-if Terrain then
-Terrain.WaterWaveSize = 0
-Terrain.WaterWaveSpeed = 0
-Terrain.WaterReflectance = 0
-Terrain.WaterTransparency = 0
-end
-end },
-{ Name = "Remove Decals", Action = function()
-for _, decal in pairs(Workspace:GetDescendants()) do
-if decal:IsA("Decal") then
-decal.Transparency = 1
-end
-end
-end },
-{ Name = "Disable Dynamic Lights", Action = function()
-for _, light in pairs(Workspace:GetDescendants()) do
-if light:IsA("PointLight") or light:IsA("SpotLight") or light:IsA("SurfaceLight") then
-light.Enabled = false
-end
-end
-end },
-{ Name = "Mute Sounds", Action = function()
-for _, sound in pairs(Workspace:GetDescendants()) do
-if sound:IsA("Sound") then
-sound.Volume = 0
-end
-end
-end },
-{ Name = "Remove Local Particle Effects", Action = function()
-for _, particle in pairs(LocalPlayer.Character:GetDescendants()) do
-if particle:IsA("ParticleEmitter") or particle:IsA("Trail") then
-particle.Enabled = false
-end
-end
-end },
-}
-
-local toggles = {}
-
-for i, setting in ipairs(antiLagSettings) do
-toggles[i] = TabAntiLag:CreateToggle({
-Name = setting.Name,
-CurrentValue = false,
-Callback = function(value)
-if value then
-setting.Action()
-else
--- You can implement a revert action here if needed
+if autofarmEnabled t-- You can implement a revert action here if needed
 end
 end
 })
@@ -882,6 +798,3 @@ antiLagSettings[i].Action()
 end
 end
 task.wait(10)
-end
-end)
-
