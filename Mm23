@@ -1,0 +1,722 @@
+-- Rayfield Setup
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+Name = "MM2 - By darker9899",
+Icon = 0,
+LoadingTitle = "Loading...",
+LoadingSubtitle = "by darker9899",
+ShowText = "Rayfield",
+Theme = "Default",
+ToggleUIKeybind = "K",
+DisableRayfieldPrompts = false,
+DisableBuildWarnings = false,
+ConfigurationSaving = {
+Enabled = true,
+FolderName = nil,
+FileName = "Big Hub"
+},
+Discord = {
+Enabled = false,
+Invite = "noinvitelink",
+RememberJoins = true
+},
+KeySystem = false,
+KeySettings = {
+Title = "Untitled",
+Subtitle = "Key System",
+Note = "No method of obtaining the key is provided",
+FileName = "Key",
+SaveKey = true,
+GrabKeyFromSite = false,
+Key = {"JKB"}
+}
+})
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local Lighting = game:GetService("Lighting")
+local Terrain = Workspace:FindFirstChildOfClass("Terrain")
+local LocalPlayer = Players.LocalPlayer
+
+local TabSheriff = Window:CreateTab("Sheriff", 4483362458)
+local autoShootEnabled = true
+local autoShootV2Enabled = false
+local shootMode = "Curve"
+local prioritizePing = true
+local antiflingEnabled = false
+
+TabSheriff:CreateToggle({
+Name = "Auto Shoot",
+CurrentValue = true,
+Flag = "AutoShootToggle",
+Callback = function(Value)
+autoShootEnabled = Value
+end,
+})
+
+-- Novo toggle Auto Shoot V2
+TabSheriff:CreateToggle({
+Name = "Auto Shoot V2 (Smart Vision)",
+CurrentValue = false,
+Flag = "AutoShootV2Toggle",
+Callback = function(Value)
+autoShootV2Enabled = Value
+end,
+})
+
+TabSheriff:CreateDropdown({
+Name = "Choose Shoot Mode",
+Options = {"Curve", "Static", "Instantly"},
+CurrentOption = "Curve",
+Flag = "ShootModeDropdown",
+Callback = function(Option)
+shootMode = Option
+end,
+})
+
+TabSheriff:CreateToggle({
+Name = "Prioritize Ping",
+CurrentValue = true,
+Flag = "PrioritizePingToggle",
+Callback = function(Value)
+prioritizePing = Value
+end,
+})
+
+TabSheriff:CreateToggle({
+Name = "Anti Fling (Pass through Players)",
+CurrentValue = false,
+Flag = "AntiFlingToggle",
+Callback = function(Value)
+antiflingEnabled = Value
+if antiflingEnabled and LocalPlayer.Character then
+-- Desabilita colisão entre seu personagem e os personagens dos outros players
+for _, otherPlayer in pairs(Players:GetPlayers()) do
+if otherPlayer ~= LocalPlayer and otherPlayer.Character then
+for _, myPart in pairs(LocalPlayer.Character:GetChildren()) do
+if myPart:IsA("BasePart") then
+for _, otherPart in pairs(otherPlayer.Character:GetChildren()) do
+if otherPart:IsA("BasePart") then
+myPart:SetNetworkOwner(nil) -- Garante que o servidor controla física pra evitar lag estranho
+myPart.CanCollide = true -- Seu personagem continua colidindo (com mapa)
+otherPart.CanCollide = true
+-- Desativa colisão entre partes seu personagem e as partes do outro player
+pcall(function()
+myPart:GetPropertyChangedSignal("CanCollide"):Wait()
+end)
+-- Remove colisão específica
+game:GetService("PhysicsService"):SetPartCollisionGroup(myPart, "NoCollidePlayers")
+game:GetService("PhysicsService"):SetPartCollisionGroup(otherPart, "NoCollidePlayers")
+end
+end
+end
+end
+end
+end
+else
+-- Reativa colisão normal quando desligar toggle
+if LocalPlayer.Character then
+for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+if part:IsA("BasePart") then
+part.CanCollide = true
+game:GetService("PhysicsService"):SetPartCollisionGroup(part, "Default")
+end
+end
+end
+end
+end,
+})
+
+-- Função para verificar se um jogador é assassino
+local function isMurdererPlayer(player)
+if not player or not player.Character then return false end
+local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife"))
+return hasKnife ~= nil
+end
+
+-- Função para verificar se o assassino está visível e na direção certa
+local function isMurdererVisible(murdererCharacter)
+local myCharacter = LocalPlayer.Character
+if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then return false end
+if not murdererCharacter or not murdererCharacter:FindFirstChild("HumanoidRootPart") then return false end
+
+local myRoot = myCharacter.HumanoidRootPart
+local murdererRoot = murdererCharacter.HumanoidRootPart
+local humanoid = myCharacter:FindFirstChildOfClass("Humanoid")
+
+-- Calcula direção para o assassino
+local directionToMurderer = (murdererRoot.Position - myRoot.Position).Unit
+local myLookDirection = myRoot.CFrame.LookVector
+
+-- Verifica se está na frente, atrás, esquerda ou direita (não muito específico)
+local dotProduct = myLookDirection:Dot(directionToMurderer)
+local isInGeneralDirection = dotProduct > -0.7 -- Permite um campo de visão bem amplo
+
+-- Raycast para verificar se há obstáculos
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+raycastParams.FilterDescendantsInstances = {myCharacter, murdererCharacter}
+
+local raycastResult = Workspace:Raycast(myRoot.Position, murdererRoot.Position - myRoot.Position, raycastParams)
+
+-- Se não há obstáculos ou se o obstáculo é muito longe, considera visível
+local isVisible = not raycastResult or (raycastResult.Distance > (murdererRoot.Position - myRoot.Position).Magnitude * 0.9)
+
+return isInGeneralDirection and isVisible
+end
+
+-- Shoot button GUI
+local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+gui.Name = "ShootGui"
+gui.ResetOnSpawn = false
+
+local button = Instance.new("TextButton", gui)
+button.Size = UDim2.new(0, 100, 0, 100)
+button.Position = UDim2.new(0.5, -60, 0.8, 0)
+button.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+button.TextColor3 = Color3.new(1, 1, 1)
+button.Font = Enum.Font.SourceSansBold
+button.TextSize = 14
+button.Text = "SHOOT"
+
+-- Drag logic for the button
+local dragging, dragStart, startPos, dragInput
+button.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging = true
+dragStart = input.Position
+startPos = button.Position
+input.Changed:Connect(function()
+if input.UserInputState == Enum.UserInputState.End then
+dragging = false
+end
+end)
+end
+end)
+
+button.InputChanged:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+dragInput = input
+end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+if input == dragInput and dragging then
+local delta = input.Position - dragStart
+button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+end)
+
+local function getPingTime()
+if not prioritizePing then return 0 end
+return 0.125
+end
+
+local function shoot()
+TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(0, 100, 0, 90)}):Play()
+task.wait(0.1)
+TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(0, 100, 0, 100)}):Play()
+
+local char = LocalPlayer.Character
+local backpack = LocalPlayer:FindFirstChild("Backpack")
+local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
+if not gun then return end
+
+char:FindFirstChild("Humanoid"):EquipTool(gun)
+task.wait(0.1)
+
+for _, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and player.Character then
+local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife"))
+if hasKnife then
+local root = player.Character:FindFirstChild("HumanoidRootPart")
+if not root then continue end
+
+local pos = root.Position
+local vel = root.Velocity
+local predicted = pos
+
+if shootMode == "Curve" then
+predicted = pos + vel * getPingTime()
+elseif shootMode == "Static" then
+predicted = pos
+elseif shootMode == "Instantly" then
+predicted = pos
+char:FindFirstChild("Humanoid"):EquipTool(gun)
+end
+
+pcall(function()        
+	local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+		:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+	gunRemote:InvokeServer(1, predicted, "AH2")        
+end)        
+break
+
+end
+
+end
+
+end
+
+end
+
+-- Função Auto Shoot V2 (inteligente)
+local function autoShootV2()
+local char = LocalPlayer.Character
+local backpack = LocalPlayer:FindFirstChild("Backpack")
+local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
+if not gun then return end
+
+-- Encontra o assassino
+for _, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and isMurdererPlayer(player) and player.Character then
+-- Verifica se o assassino está visível
+if isMurdererVisible(player.Character) then
+local root = player.Character:FindFirstChild("HumanoidRootPart")
+if root then
+char:FindFirstChild("Humanoid"):EquipTool(gun)
+task.wait(0.1)
+
+local pos = root.Position
+local vel = root.Velocity
+local predicted = pos
+
+if shootMode == "Curve" then
+predicted = pos + vel * getPingTime()
+elseif shootMode == "Static" then
+predicted = pos
+end
+
+pcall(function()        
+local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+gunRemote:InvokeServer(1, predicted, "AH2")        
+end)
+break
+end
+end
+end
+end
+end
+
+button.MouseButton1Click:Connect(shoot)
+
+-- Loop do Auto Shoot original
+task.spawn(function()
+while true do
+if autoShootEnabled then
+pcall(shoot)
+task.wait(0.5)
+else
+task.wait(1)
+end
+end
+end)
+
+-- Loop do Auto Shoot V2 (inteligente)
+task.spawn(function()
+while true do
+if autoShootV2Enabled then
+pcall(autoShootV2)
+task.wait(0.3) -- Verifica mais frequentemente
+else
+task.wait(1)
+end
+end
+end)
+
+local TabMovement = Window:CreateTab("Movement", 4483362458)
+local GlitchSpeed = 33
+local NormalSpeed = 16
+local ToggleEnabled = false
+local IsJumping = false
+
+local function SetSpeed(speed)
+local char = LocalPlayer.Character
+if char and char:FindFirstChildOfClass("Humanoid") then
+char:FindFirstChildOfClass("Humanoid").WalkSpeed = speed
+end
+end
+
+local function SetupHumanoid(humanoid)
+if not humanoid then return end
+humanoid.StateChanged:Connect(function(_, newState)
+if not ToggleEnabled then return end
+if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
+IsJumping = true
+elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
+IsJumping = false
+SetSpeed(NormalSpeed)
+end
+end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+local humanoid = char:WaitForChild("Humanoid", 5)
+SetupHumanoid(humanoid)
+SetSpeed(NormalSpeed)
+end)
+
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+SetupHumanoid(LocalPlayer.Character:FindFirstChild("Humanoid"))
+SetSpeed(NormalSpeed)
+end
+
+RunService.Heartbeat:Connect(function()
+if not ToggleEnabled then return end
+local char = LocalPlayer.Character
+if char and char:FindFirstChildOfClass("Humanoid") and IsJumping then
+local moving = char.Humanoid.MoveDirection.Magnitude > 0
+if moving then
+SetSpeed(GlitchSpeed)
+end
+end
+end)
+
+TabMovement:CreateToggle({
+Name = "Glitch Speed (Mobile)",
+CurrentValue = false,
+Flag = "GlitchSpeedToggle",
+Callback = function(Value)
+ToggleEnabled = Value
+SetSpeed(NormalSpeed)
+end,
+})
+
+local TabESP = Window:CreateTab("Esp", 4483362458)
+local ESP_Ativo = false
+
+local function RemoverTodosHighlights()
+for _, player in pairs(Players:GetPlayers()) do
+if player.Character and player.Character:FindFirstChild("OutlineESP") then
+player.Character.OutlineESP:Destroy()
+end
+end
+end
+
+local function UpdateHighlight(player)
+if player.Character then
+local highlight = player.Character:FindFirstChild("OutlineESP")
+if not highlight then
+highlight = Instance.new("Highlight")
+highlight.Name = "OutlineESP"
+highlight.Adornee = player.Character
+highlight.FillTransparency = 1
+highlight.OutlineTransparency = 0
+highlight.Parent = player.Character
+end
+
+local tool = player.Character:FindFirstChildOfClass("Tool") or (player:FindFirstChild("Backpack") and player.Backpack:FindFirstChildOfClass("Tool"))
+if tool then
+local name = tool.Name:lower()
+if name:find("gun") then
+highlight.OutlineColor = Color3.fromRGB(0, 170, 255)
+elseif name:find("knife") then
+highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+else
+highlight.OutlineColor = Color3.fromRGB(0, 255, 0)
+end
+else
+highlight.OutlineColor = Color3.fromRGB(0, 255, 0)
+end
+end
+
+end
+
+TabESP:CreateToggle({
+Name = "Outline ESP",
+CurrentValue = false,
+Flag = "ToggleESP",
+Callback = function(Value)
+ESP_Ativo = Value
+if not ESP_Ativo then RemoverTodosHighlights() end
+end,
+})
+
+task.spawn(function()
+while true do
+if ESP_Ativo then
+for _, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer then
+UpdateHighlight(player)
+end
+end
+end
+task.wait(0.1)
+end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+player.CharacterAdded:Connect(function()
+task.wait(1)
+if ESP_Ativo then UpdateHighlight(player) end
+end)
+end)
+
+for _, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer then
+player.CharacterAdded:Connect(function()
+task.wait(1)
+if ESP_Ativo then UpdateHighlight(player) end
+end)
+end
+end
+
+local TabAuto = Window:CreateTab("Auto", 4483362458)
+local autofarmEnabled = false
+local autoBringCoins = false
+local walkSpeed = 60
+local safeY = 5
+local coinCount = 0
+
+local maps = {
+"ResearchFacility", "Factory", "Milbase", "Workplace", "Hotel", "Hotel2",
+"House2", "Mansion2", "Office3", "Bank2", "BioLab"
+}
+
+TabAuto:CreateToggle({
+Name = "Auto Farm Coins",
+CurrentValue = false,
+Flag = "AutoFarmCoins",
+Callback = function(Value)
+autofarmEnabled = Value
+end,
+})
+
+TabAuto:CreateToggle({
+Name = "Auto Bring Coins",
+CurrentValue = false,
+Flag = "AutoBringCoins",
+Callback = function(Value)
+autoBringCoins = Value
+end,
+})
+
+local function getCurrentMap()
+for _, name in ipairs(maps) do
+local map = Workspace:FindFirstChild(name)
+if map and map:FindFirstChild("CoinContainer") then
+return map
+end
+end
+return nil
+end
+
+local function getAllCoins(map)
+local coins = {}
+local container = map:FindFirstChild("CoinContainer")
+if container then
+for _, obj in pairs(container:GetDescendants()) do
+if obj:IsA("BasePart") and obj.Name == "MainCoin" then
+table.insert(coins, obj)
+end
+end
+end
+return coins
+end
+
+local function walkTo(position)
+local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not hrp then return end
+
+local distance = (position - hrp.Position).Magnitude
+local direction = (position - hrp.Position).Unit
+local endTime = tick() + (distance / walkSpeed)
+
+while tick() < endTime and autofarmEnabled do
+if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
+LocalPlayer.Character.HumanoidRootPart.Velocity = direction * walkSpeed
+RunService.RenderStepped:Wait()
+end
+
+LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.zero
+
+end
+
+local function teleportToSafeSpot(map)
+local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not root then return end
+local part = map:FindFirstChild("Floor") or map:FindFirstChildWhichIsA("BasePart")
+if part then
+root.CFrame = part.CFrame + Vector3.new(0, 10, 0)
+else
+root.CFrame = CFrame.new(0, 10, 0)
+end
+end
+
+RunService.Stepped:Connect(function()
+if autofarmEnabled and LocalPlayer.Character then
+for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+if part:IsA("BasePart") then
+part.CanCollide = false
+end
+end
+end
+end)
+
+task.spawn(function()
+while true do
+if autofarmEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+if humanoid and humanoid.Health <= 0 then
+repeat task.wait(1) until LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0
+task.wait(2)
+end
+
+local map = getCurrentMap()
+if map then
+local hrp = LocalPlayer.Character.HumanoidRootPart
+
+if autoBringCoins then
+local coins = getAllCoins(map)
+for _, coin in ipairs(coins) do
+pcall(function()
+if coin and coin:IsA("BasePart") then
+coin.CFrame = hrp.CFrame + Vector3.new(0, 2, 0)
+end
+end)
+end
+end
+
+if hrp.Position.Y < safeY then
+teleportToSafeSpot(map)
+task.wait(1)
+end
+
+if autofarmEnabled then        
+	local coins = getAllCoins(map)        
+	table.sort(coins, function(a, b)        
+		return (a.Position - hrp.Position).Magnitude < (b.Position - hrp.Position).Magnitude        
+	end)        
+
+	for _, coin in ipairs(coins) do        
+		if autofarmEnabled and coin and coin:IsDescendantOf(game) then        
+			local distance = (coin.Position - hrp.Position).Magnitude        
+			if distance <= 40 then        
+				pcall(function()        
+					walkTo(coin.Position + Vector3.new(0, 2.5, 0))        
+					task.wait(0.15)        
+					coinCount += 1        
+				end)        
+			end        
+		end        
+	end        
+end
+
+end
+
+end
+task.wait(0.3)
+
+end
+
+end)
+
+local AutoGetGun = { Enabled = false, CollectDistance = 5000 }
+
+local function isMurderer()
+for _, t in pairs(LocalPlayer.Character:GetChildren()) do
+if t:IsA("Tool") and t.Name == "Knife" then return true end
+end
+return false
+end
+
+local function getNearestGun()
+local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not root then return end
+
+local closest, dist = nil, AutoGetGun.CollectDistance
+for _, item in ipairs(Workspace:GetDescendants()) do
+if item.Name == "GunDrop" then
+local success, pos = pcall(function() return item:GetPivot().Position end)
+if success and (root.Position - pos).Magnitude < dist then
+closest = item
+dist = (root.Position - pos).Magnitude
+end
+end
+end
+return closest
+
+end
+
+local function autoGetGunLoop()
+while AutoGetGun.Enabled do
+if not isMurderer() then
+local gun = getNearestGun()
+local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if gun and gun:IsA("BasePart") and root then
+local original = root.CFrame
+root.CFrame = CFrame.new(gun.Position + Vector3.new(0, 2, 0))
+task.wait()
+root.CFrame = original
+end
+end
+task.wait(3)
+end
+end
+
+TabAuto:CreateToggle({
+Name = "Auto Get Gun",
+CurrentValue = false,
+Flag = "AutoGetGunToggle",
+Callback = function(Value)
+AutoGetGun.Enabled = Value
+if Value then task.spawn(autoGetGunLoop) end
+end,
+})
+
+local TabAntiLag = Window:CreateTab("AntiLag", 4483362458)
+
+local antiLagSettings = {
+{ Name = "Disable Global Shadows", Action = function() Lighting.GlobalShadows = false end },
+{ Name = "Increase Fog Range", Action = function() Lighting.FogEnd = 1000000 end },
+{ Name = "Reduce Brightness", Action = function() Lighting.Brightness = 0 end },
+{ Name = "Lock Time of Day", Action = function() Lighting.ClockTime = 14 end },
+{ Name = "Remove Particles", Action = function()
+for _, v in pairs(Workspace:GetDescendants()) do
+if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Fire") or v:IsA("Smoke") then
+v.Enabled = false
+end
+end
+end },
+{ Name = "Disable Reflections", Action = function() Lighting.ReflectionIntensity = 0 end },
+{ Name = "Disable Blur", Action = function()
+local blur = Lighting:FindFirstChildOfClass("BlurEffect")
+if blur then
+blur.Enabled = false
+end
+end },
+{ Name = "Disable Depth of Field", Action = function()
+local dof = Lighting:FindFirstChildOfClass("DepthOfFieldEffect")
+if dof then
+dof.Enabled = false
+end
+end },
+{ Name = "Disable Bloom", Action = function()
+local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
+if bloom then
+bloom.Enabled = false
+end
+end },
+{ Name = "Remove Local Shadows", Action = function()
+for _, part in pairs(Workspace:GetDescendants()) do
+if part:IsA("BasePart") then
+part.CastShadow = false
+end
+end
+end },
+{ Name = "Disable Terrain Effects", Action = function()
+if Terrain then
+Terrain.WaterWaveSize = 0
+Terrain.WaterWaveSpeed = 0
+Terrain.WaterReflectance = 0
+Terrain.WaterTransparency = 0
+end
+end },
+{ Name = "Remove Decals"
