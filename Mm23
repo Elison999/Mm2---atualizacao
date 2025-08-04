@@ -946,3 +946,97 @@ end
 task.wait(10)
 end
 end)
+
+using System.Collections;
+using UnityEngine;
+
+public class PlayerCollisionManager : MonoBehaviour
+{
+    [Header("Configurações")]
+    public string playerTag = "Player";
+    public float updateInterval = 1f;
+    
+    [Header("Opções de Colisão")]
+    public bool disablePlayerCollision = true;
+    public LayerMask playerLayer = 8; // Layer dos players
+    
+    private void Start()
+    {
+        // Inicia a corrotina que atualiza a cada segundo
+        StartCoroutine(UpdateCollisionRoutine());
+        
+        // Remove colisão inicial
+        if (disablePlayerCollision)
+        {
+            RemovePlayerCollisions();
+        }
+    }
+    
+    private IEnumerator UpdateCollisionRoutine()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(updateInterval);
+            
+            if (disablePlayerCollision)
+            {
+                RemovePlayerCollisions();
+            }
+        }
+    }
+    
+    private void RemovePlayerCollisions()
+    {
+        // Método 1: Usando Physics.IgnoreLayerCollision
+        Physics.IgnoreLayerCollision(playerLayer, playerLayer, true);
+        
+        // Método 2: Encontrar todos os players e desabilitar colisão entre eles
+        GameObject[] players = GameObject.FindGameObjectsWithTag(playerTag);
+        
+        for (int i = 0; i < players.Length; i++)
+        {
+            Collider playerCollider1 = players[i].GetComponent<Collider>();
+            if (playerCollider1 == null) continue;
+            
+            for (int j = i + 1; j < players.Length; j++)
+            {
+                Collider playerCollider2 = players[j].GetComponent<Collider>();
+                if (playerCollider2 == null) continue;
+                
+                // Ignora colisão entre os dois players
+                Physics.IgnoreCollision(playerCollider1, playerCollider2, true);
+            }
+        }
+        
+        Debug.Log($"Colisões removidas entre {players.Length} players às {System.DateTime.Now:HH:mm:ss}");
+    }
+    
+    // Método para reativar colisões
+    public void EnablePlayerCollisions()
+    {
+        disablePlayerCollision = false;
+        Physics.IgnoreLayerCollision(playerLayer, playerLayer, false);
+        
+        GameObject[] players = GameObject.FindGameObjectsWithTag(playerTag);
+        
+        for (int i = 0; i < players.Length; i++)
+        {
+            Collider playerCollider1 = players[i].GetComponent<Collider>();
+            if (playerCollider1 == null) continue;
+            
+            for (int j = i + 1; j < players.Length; j++)
+            {
+                Collider playerCollider2 = players[j].GetComponent<Collider>();
+                if (playerCollider2 == null) continue;
+                
+                Physics.IgnoreCollision(playerCollider1, playerCollider2, false);
+            }
+        }
+    }
+    
+    private void OnDisable()
+    {
+        // Para a corrotina quando o objeto é desabilitado
+        StopAllCoroutines();
+    }
+}
