@@ -44,6 +44,114 @@ local Lighting = game:GetService("Lighting")
 local Terrain = Workspace:FindFirstChildOfClass("Terrain")
 local LocalPlayer = Players.LocalPlayer
 
+-- Aba Innocents
+local TabInnocents = Window:CreateTab("Innocents", 4483362458)
+local autoRunEnabled = false
+local runDistance = 25
+local isRunning = false
+
+-- Função para verificar se um jogador é o assassino
+local function isMurderer(player)
+    if not player or not player.Character then return false end
+    
+    -- Verifica se tem faca no character
+    local knife = player.Character:FindFirstChild("Knife")
+    if knife then return true end
+    
+    -- Verifica se tem faca no backpack
+    if player.Backpack and player.Backpack:FindFirstChild("Knife") then
+        return true
+    end
+    
+    return false
+end
+
+-- Função para encontrar o assassino mais próximo
+local function getNearestMurderer()
+    local myCharacter = LocalPlayer.Character
+    if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then
+        return nil, math.huge
+    end
+    
+    local myPosition = myCharacter.HumanoidRootPart.Position
+    local nearestMurderer = nil
+    local nearestDistance = math.huge
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and isMurderer(player) and player.Character then
+            local murdererRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if murdererRoot then
+                local distance = (murdererRoot.Position - myPosition).Magnitude
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearestMurderer = player
+                end
+            end
+        end
+    end
+    
+    return nearestMurderer, nearestDistance
+end
+
+-- Função para fugir do assassino
+local function runFromMurderer(murdererCharacter)
+    local myCharacter = LocalPlayer.Character
+    if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then return end
+    
+    local myRoot = myCharacter.HumanoidRootPart
+    local murdererRoot = murdererCharacter:FindFirstChild("HumanoidRootPart")
+    if not murdererRoot then return end
+    
+    local humanoid = myCharacter:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    -- Calcula direção oposta ao assassino
+    local directionAway = (myRoot.Position - murdererRoot.Position).Unit
+    local runPosition = myRoot.Position + (directionAway * 50)
+    
+    -- Move o personagem para longe
+    humanoid:MoveTo(runPosition)
+    isRunning = true
+    
+    -- Para de correr após um tempo
+    task.spawn(function()
+        task.wait(2)
+        isRunning = false
+    end)
+end
+
+-- Toggle para Auto Run from Murder
+TabInnocents:CreateToggle({
+    Name = "Auto Run from Murder (Dist 25)",
+    CurrentValue = false,
+    Flag = "AutoRunFromMurder",
+    Callback = function(Value)
+        autoRunEnabled = Value
+    end,
+})
+
+-- Loop principal para verificar assassinos próximos
+task.spawn(function()
+    while true do
+        if autoRunEnabled then
+            local murderer, distance = getNearestMurderer()
+            
+            if murderer and distance <= runDistance and not isRunning then
+                -- Verifica se não sou o sheriff (para não fugir desnecessariamente)
+                local myCharacter = LocalPlayer.Character
+                local hasGun = (myCharacter and myCharacter:FindFirstChild("Gun")) or 
+                              (LocalPlayer.Backpack and LocalPlayer.Backpack:FindFirstChild("Gun"))
+                
+                if not hasGun then -- Só foge se não for o sheriff
+                    runFromMurderer(murderer.Character)
+                end
+            end
+        end
+        
+        task.wait(0.5) -- Verifica a cada 0.5 segundos
+    end
+end)
+
 local TabSheriff = Window:CreateTab("Sheriff", 4483362458)
 local autoShootEnabled = true
 local autoShootV2Enabled = false
@@ -331,64 +439,6 @@ end
 end
 end)
 
-local TabMovement = Window:CreateTab("Movement", 4483362458)
-local GlitchSpeed = 33
-local NormalSpeed = 16
-local ToggleEnabled = false
-local IsJumping = false
-
-local function SetSpeed(speed)
-local char = LocalPlayer.Character
-if char and char:FindFirstChildOfClass("Humanoid") then
-char:FindFirstChildOfClass("Humanoid").WalkSpeed = speed
-end
-end
-
-local function SetupHumanoid(humanoid)
-if not humanoid then return end
-humanoid.StateChanged:Connect(function(_, newState)
-if not ToggleEnabled then return end
-if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
-IsJumping = true
-elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
-IsJumping = false
-SetSpeed(NormalSpeed)
-end
-end)
-end
-
-LocalPlayer.CharacterAdded:Connect(function(char)
-local humanoid = char:WaitForChild("Humanoid", 5)
-SetupHumanoid(humanoid)
-SetSpeed(NormalSpeed)
-end)
-
-if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-SetupHumanoid(LocalPlayer.Character:FindFirstChild("Humanoid"))
-SetSpeed(NormalSpeed)
-end
-
-RunService.Heartbeat:Connect(function()
-if not ToggleEnabled then return end
-local char = LocalPlayer.Character
-if char and char:FindFirstChildOfClass("Humanoid") and IsJumping then
-local moving = char.Humanoid.MoveDirection.Magnitude > 0
-if moving then
-SetSpeed(GlitchSpeed)
-end
-end
-end)
-
-TabMovement:CreateToggle({
-Name = "Glitch Speed (Mobile)",
-CurrentValue = false,
-Flag = "GlitchSpeedToggle",
-Callback = function(Value)
-ToggleEnabled = Value
-SetSpeed(NormalSpeed)
-end,
-})
-
 local TabESP = Window:CreateTab("Esp", 4483362458)
 local ESP_Ativo = false
 
@@ -467,6 +517,64 @@ if ESP_Ativo then UpdateHighlight(player) end
 end)
 end
 end
+
+local TabMovement = Window:CreateTab("Movement", 4483362458)
+local GlitchSpeed = 33
+local NormalSpeed = 16
+local ToggleEnabled = false
+local IsJumping = false
+
+local function SetSpeed(speed)
+local char = LocalPlayer.Character
+if char and char:FindFirstChildOfClass("Humanoid") then
+char:FindFirstChildOfClass("Humanoid").WalkSpeed = speed
+end
+end
+
+local function SetupHumanoid(humanoid)
+if not humanoid then return end
+humanoid.StateChanged:Connect(function(_, newState)
+if not ToggleEnabled then return end
+if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
+IsJumping = true
+elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
+IsJumping = false
+SetSpeed(NormalSpeed)
+end
+end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+local humanoid = char:WaitForChild("Humanoid", 5)
+SetupHumanoid(humanoid)
+SetSpeed(NormalSpeed)
+end)
+
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+SetupHumanoid(LocalPlayer.Character:FindFirstChild("Humanoid"))
+SetSpeed(NormalSpeed)
+end
+
+RunService.Heartbeat:Connect(function()
+if not ToggleEnabled then return end
+local char = LocalPlayer.Character
+if char and char:FindFirstChildOfClass("Humanoid") and IsJumping then
+local moving = char.Humanoid.MoveDirection.Magnitude > 0
+if moving then
+SetSpeed(GlitchSpeed)
+end
+end
+end)
+
+TabMovement:CreateToggle({
+Name = "Glitch Speed (Mobile)",
+CurrentValue = false,
+Flag = "GlitchSpeedToggle",
+Callback = function(Value)
+ToggleEnabled = Value
+SetSpeed(NormalSpeed)
+end,
+})
 
 local TabAuto = Window:CreateTab("Auto", 4483362458)
 local autofarmEnabled = false
@@ -719,4 +827,61 @@ Terrain.WaterReflectance = 0
 Terrain.WaterTransparency = 0
 end
 end },
-{ Name = "Remove Decals"
+{ Name = "Remove Decals", Action = function()
+for _, decal in pairs(Workspace:GetDescendants()) do
+if decal:IsA("Decal") then
+decal.Transparency = 1
+end
+end
+end },
+{ Name = "Disable Dynamic Lights", Action = function()
+for _, light in pairs(Workspace:GetDescendants()) do
+if light:IsA("PointLight") or light:IsA("SpotLight") or light:IsA("SurfaceLight") then
+light.Enabled = false
+end
+end
+end },
+{ Name = "Mute Sounds", Action = function()
+for _, sound in pairs(Workspace:GetDescendants()) do
+if sound:IsA("Sound") then
+sound.Volume = 0
+end
+end
+end },
+{ Name = "Remove Local Particle Effects", Action = function()
+for _, particle in pairs(LocalPlayer.Character:GetDescendants()) do
+if particle:IsA("ParticleEmitter") or particle:IsA("Trail") then
+particle.Enabled = false
+end
+end
+end },
+}
+
+local toggles = {}
+
+for i, setting in ipairs(antiLagSettings) do
+toggles[i] = TabAntiLag:CreateToggle({
+Name = setting.Name,
+CurrentValue = false,
+Callback = function(value)
+if value then
+setting.Action()
+else
+-- You can implement a revert action here if needed
+end
+end
+})
+end
+
+-- Reapply enabled optimizations every 10 seconds
+task.spawn(function()
+while true do
+for i, toggle in pairs(toggles) do
+if toggle and toggle:Get() then
+antiLagSettings[i].Action()
+end
+end
+task.wait(10)
+end
+end)
+
