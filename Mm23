@@ -1,4 +1,5 @@
 -- Rayfield Setup
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
@@ -521,6 +522,27 @@ local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack an
 return hasKnife ~= nil
 end
 
+-- ✅ NOVA FUNÇÃO: Verificar se o murder está no chão
+local function isMurdererOnGround(murdererCharacter)
+if not murdererCharacter or not murdererCharacter:FindFirstChild("HumanoidRootPart") then return false end
+local humanoid = murdererCharacter:FindFirstChildOfClass("Humanoid")
+if not humanoid then return false end
+-- Verifica se não está pulando, caindo ou voando
+local state = humanoid:GetState()
+return state ~= Enum.HumanoidStateType.Jumping and 
+       state ~= Enum.HumanoidStateType.Freefall and
+       state ~= Enum.HumanoidStateType.Flying
+end
+
+-- ✅ NOVA FUNÇÃO: Verificar se o murder está pulando
+local function isMurdererJumping(murdererCharacter)
+if not murdererCharacter or not murdererCharacter:FindFirstChild("HumanoidRootPart") then return false end
+local humanoid = murdererCharacter:FindFirstChildOfClass("Humanoid")
+if not humanoid then return false end
+local state = humanoid:GetState()
+return state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall
+end
+
 -- Função para verificar se o assassino está visível e na direção certa
 local function isMurdererVisible(murdererCharacter)
 if not isPlayerAlive(LocalPlayer) then return false end
@@ -676,7 +698,7 @@ end
 
 end
 
--- Função Auto Shoot V2 (inteligente) com proteção contra morte
+-- ✅ FUNÇÃO AUTO SHOOT V2 MELHORADA
 local function autoShootV2()
 -- Primeira verificação: está vivo e tem arma?
 if not isPlayerAlive(LocalPlayer) then return end
@@ -690,10 +712,16 @@ if not gun then return end
 -- Encontra o assassino
 for _, player in pairs(Players:GetPlayers()) do
 if player ~= LocalPlayer and isMurdererSheriff(player) and player.Character then
+-- ✅ NOVA LÓGICA: Só atira se murder estiver no chão
+if not isMurdererOnGround(player.Character) then
+continue -- Pula este murder se ele não estiver no chão
+end
+
 -- Verifica se o assassino está visível
 if isMurdererVisible(player.Character) then
 local root = player.Character:FindFirstChild("HumanoidRootPart")
-if root then
+local head = player.Character:FindFirstChild("Head")
+if root and head then
 -- Verifica novamente se ainda está vivo antes de equipar arma
 if not isPlayerAlive(LocalPlayer) then return end
 
@@ -710,10 +738,16 @@ local pos = root.Position
 local vel = root.Velocity
 local predicted = pos
 
+-- ✅ NOVA LÓGICA: Se murder estiver pulando, atira acima da cabeça
+if isMurdererJumping(player.Character) then
+predicted = head.Position + Vector3.new(0, 3, 0) -- 3 studs acima da cabeça
+else
+-- Murder no chão - usa sistema normal
 if shootMode == "Curve" then
 predicted = pos + vel * getPingTime()
 elseif shootMode == "Static" then
 predicted = pos
+end
 end
 
 pcall(function()
