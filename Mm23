@@ -44,6 +44,102 @@ local Lighting = game:GetService("Lighting")
 local Terrain = Workspace:FindFirstChildOfClass("Terrain")
 local LocalPlayer = Players.LocalPlayer
 
+local TabPremium = Window:CreateTab("Premium", 4483362458)
+
+-- ✅ ADICIONAR ESTE CÓDIGO NA ABA ANTILAG (antes do final)
+
+local removeTexturesEnabled = false
+
+-- Função para remover todas as texturas
+local function removeAllTextures()
+    -- Remove texturas de todas as partes do workspace
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            obj.Material = Enum.Material.SmoothPlastic
+            obj.Color = Color3.fromRGB(100, 100, 100) -- Cor cinza neutra
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            obj.Transparency = 1
+        elseif obj:IsA("SurfaceGui") then
+            obj.Enabled = false
+        elseif obj:IsA("BillboardGui") then
+            obj.Enabled = false
+        elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+            obj.Image = ""
+            obj.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        end
+    end
+    
+    -- Remove texturas dos players
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character then
+            for _, part in pairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.Material = Enum.Material.SmoothPlastic
+                    if part.Name == "Head" then
+                        part.Color = Color3.fromRGB(255, 220, 177) -- Cor de pele
+                    else
+                        part.Color = Color3.fromRGB(100, 100, 100)
+                    end
+                elseif part:IsA("Decal") or part:IsA("Texture") then
+                    part.Transparency = 1
+                elseif part:IsA("Accessory") or part:IsA("Hat") then
+                    part:Destroy()
+                end
+            end
+        end
+    end
+    
+    -- Remove/modifica elementos do Lighting
+    for _, effect in pairs(Lighting:GetChildren()) do
+        if effect:IsA("Atmosphere") then
+            effect:Destroy()
+        elseif effect:IsA("Sky") then
+            effect:Destroy()
+        elseif effect:IsA("BloomEffect") then
+            effect.Enabled = false
+        elseif effect:IsA("BlurEffect") then
+            effect.Enabled = false
+        elseif effect:IsA("ColorCorrectionEffect") then
+            effect.Enabled = false
+        elseif effect:IsA("DepthOfFieldEffect") then
+            effect.Enabled = false
+        elseif effect:IsA("SunRaysEffect") then
+            effect.Enabled = false
+        end
+    end
+    
+    -- Configurações básicas do Lighting
+    Lighting.Brightness = 1
+    Lighting.Ambient = Color3.fromRGB(100, 100, 100)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
+    Lighting.ColorShift_Top = Color3.fromRGB(0, 0, 0)
+    Lighting.FogColor = Color3.fromRGB(100, 100, 100)
+    Lighting.FogEnd = 1000000
+    Lighting.FogStart = 0
+end
+
+-- Toggle para Remove All Textures
+TabPremium:CreateToggle({
+    Name = "Remove All Textures (Ultra Performance)",
+    CurrentValue = false,
+    Callback = function(value)
+        removeTexturesEnabled = value
+        if value then
+            removeAllTextures()
+        end
+    end
+})
+
+-- Loop que atualiza as texturas a cada 1 segundo
+task.spawn(function()
+    while true do
+        if removeTexturesEnabled then
+            pcall(removeAllTextures) -- pcall para evitar erros
+        end
+        task.wait(1) -- Atualiza a cada 1 segundo
+    end
+end)
+
 local TabESP = Window:CreateTab("Esp", 4483362458)
 local ESP_Ativo = false
 
