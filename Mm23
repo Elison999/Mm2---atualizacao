@@ -1,5 +1,3 @@
--- Rayfield Setup
-
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
@@ -418,7 +416,7 @@ end)
 local TabSheriff = Window:CreateTab("Sheriff", 4483362458)
 local autoShootEnabled = true
 local autoShootV2Enabled = false
-local shootMode = "Curve"
+local shootMode = "Curve"  -- Agora inclui "Prever Murder"
 local prioritizePing = true
 local antiflingEnabled = false
 
@@ -441,9 +439,10 @@ autoShootV2Enabled = Value
 end,
 })
 
+-- ✅ DROPDOWN ATUALIZADO COM "PREVER MURDER"
 TabSheriff:CreateDropdown({
 Name = "Choose Shoot Mode",
-Options = {"Curve", "Static", "Instantly"},
+Options = {"Curve", "Static", "Instantly", "Prever Murder"},
 CurrentOption = "Curve",
 Flag = "ShootModeDropdown",
 Callback = function(Option)
@@ -522,19 +521,82 @@ local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack an
 return hasKnife ~= nil
 end
 
--- ✅ NOVA FUNÇÃO: Verificar se o murder está no chão
+-- ✅ NOVA FUNÇÃO: Encontrar o murder mais próximo
+local function findNearestMurderer()
+local myCharacter = LocalPlayer.Character
+if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then
+return nil
+end
+
+local myPosition = myCharacter.HumanoidRootPart.Position
+local nearestMurderer = nil
+local nearestDistance = math.huge
+
+for _, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and isMurdererSheriff(player) and player.Character then
+local murdererRoot = player.Character:FindFirstChild("HumanoidRootPart")
+if murdererRoot then
+local distance = (murdererRoot.Position - myPosition).Magnitude
+if distance < nearestDistance then
+nearestDistance = distance
+nearestMurderer = player
+end
+end
+end
+end
+
+return nearestMurderer
+end
+
+-- ✅ NOVA FUNÇÃO: Prever posição do murder
+local function predictMurdererPosition(murderer)
+if not murderer or not murderer.Character then return nil end
+local root = murderer.Character:FindFirstChild("HumanoidRootPart")
+if not root then return nil end
+
+local currentPos = root.Position
+local velocity = root.Velocity
+local humanoid = murderer.Character:FindFirstChildOfClass("Humanoid")
+if not humanoid then return currentPos end
+
+-- Calcula tempo de predição baseado na distância
+local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+local distance = (currentPos - myPos).Magnitude
+local predictionTime = distance / 1000 + getPingTime() -- Ajusta baseado na distância
+
+-- Predição avançada
+local predictedPos = currentPos + (velocity * predictionTime)
+
+-- Se estiver se movendo, adiciona predição extra na direção do movimento
+if velocity.Magnitude > 1 then
+local moveDirection = velocity.Unit
+predictedPos = predictedPos + (moveDirection * 5) -- 5 studs extra na direção
+end
+
+-- Se estiver pulando, prediz posição de queda
+local state = humanoid:GetState()
+if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+local head = murderer.Character:FindFirstChild("Head")
+if head then
+predictedPos = head.Position + Vector3.new(0, 2, 0) -- Mira na cabeça quando pula
+end
+end
+
+return predictedPos
+end
+
+-- Função para verificar se o murder está no chão
 local function isMurdererOnGround(murdererCharacter)
 if not murdererCharacter or not murdererCharacter:FindFirstChild("HumanoidRootPart") then return false end
 local humanoid = murdererCharacter:FindFirstChildOfClass("Humanoid")
 if not humanoid then return false end
--- Verifica se não está pulando, caindo ou voando
 local state = humanoid:GetState()
 return state ~= Enum.HumanoidStateType.Jumping and 
        state ~= Enum.HumanoidStateType.Freefall and
        state ~= Enum.HumanoidStateType.Flying
 end
 
--- ✅ NOVA FUNÇÃO: Verificar se o murder está pulando
+-- Função para verificar se o murder está pulando
 local function isMurdererJumping(murdererCharacter)
 if not murdererCharacter or not murdererCharacter:FindFirstChild("HumanoidRootPart") then return false end
 local humanoid = murdererCharacter:FindFirstChildOfClass("Humanoid")
@@ -633,6 +695,7 @@ local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFir
 return gun ~= nil
 end
 
+-- ✅ FUNÇÃO SHOOT ATUALIZADA COM PREVER MURDER
 local function shoot()
 -- Verifica se está vivo antes de atirar
 if not isPlayerAlive(LocalPlayer) then return end
@@ -659,6 +722,24 @@ task.wait(0.1)
 -- Verifica mais uma vez antes de atirar
 if not isPlayerAlive(LocalPlayer) then return end
 
+-- ✅ NOVA LÓGICA: Se modo for "Prever Murder", encontra o murder mais próximo
+if shootMode == "Prever Murder" then
+local targetMurderer = findNearestMurderer()
+if targetMurderer then
+local predictedPos = predictMurdererPosition(targetMurderer)
+if predictedPos then
+pcall(function()
+if isPlayerAlive(LocalPlayer) then
+local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+gunRemote:InvokeServer(1, predictedPos, "AH2")
+end
+end)
+return
+end
+end
+else
+-- Lógica original para outros modos
 for _, player in pairs(Players:GetPlayers()) do
 if player ~= LocalPlayer and player.Character then
 local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife"))
@@ -691,14 +772,12 @@ end)
 break
 
 end
-
+end
+end
+end
 end
 
-end
-
-end
-
--- ✅ FUNÇÃO AUTO SHOOT V2 MELHORADA
+-- ✅ FUNÇÃO AUTO SHOOT V2 MELHORADA COM PREVER MURDER
 local function autoShootV2()
 -- Primeira verificação: está vivo e tem arma?
 if not isPlayerAlive(LocalPlayer) then return end
@@ -709,12 +788,42 @@ local backpack = LocalPlayer:FindFirstChild("Backpack")
 local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
 if not gun then return end
 
--- Encontra o assassino
+-- ✅ NOVA LÓGICA: Se modo for "Prever Murder"
+if shootMode == "Prever Murder" then
+local targetMurderer = findNearestMurderer()
+if targetMurderer and isMurdererVisible(targetMurderer.Character) then
+-- Verifica se ainda está vivo antes de equipar arma
+if not isPlayerAlive(LocalPlayer) then return end
+
+local humanoid = char:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+
+humanoid:EquipTool(gun)
+task.wait(0.1)
+
+-- Última verificação antes de atirar
+if not isPlayerAlive(LocalPlayer) then return end
+
+local predictedPos = predictMurdererPosition(targetMurderer)
+if predictedPos then
+pcall(function()
+if isPlayerAlive(LocalPlayer) then
+local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+gunRemote:InvokeServer(1, predictedPos, "AH2")
+end
+end)
+end
+end
+return
+end
+
+-- Lógica original para outros modos
 for _, player in pairs(Players:GetPlayers()) do
 if player ~= LocalPlayer and isMurdererSheriff(player) and player.Character then
--- ✅ NOVA LÓGICA: Só atira se murder estiver no chão
+-- Só atira se murder estiver no chão (exceto no modo Prever Murder)
 if not isMurdererOnGround(player.Character) then
-continue -- Pula este murder se ele não estiver no chão
+continue
 end
 
 -- Verifica se o assassino está visível
@@ -738,9 +847,9 @@ local pos = root.Position
 local vel = root.Velocity
 local predicted = pos
 
--- ✅ NOVA LÓGICA: Se murder estiver pulando, atira acima da cabeça
+-- Se murder estiver pulando, atira acima da cabeça
 if isMurdererJumping(player.Character) then
-predicted = head.Position + Vector3.new(0, 3, 0) -- 3 studs acima da cabeça
+predicted = head.Position + Vector3.new(0, 3, 0)
 else
 -- Murder no chão - usa sistema normal
 if shootMode == "Curve" then
@@ -785,7 +894,7 @@ task.spawn(function()
 while true do
 if autoShootV2Enabled and isPlayerAlive(LocalPlayer) then
 pcall(autoShootV2)
-task.wait(0.1) -- Velocidade otimizada
+task.wait(0.1)
 else
 task.wait(1)
 end
