@@ -658,7 +658,7 @@ local predictedPos = currentPos + (velocity * predictionTime)
 
 if velocity.Magnitude > 1 then
 local moveDirection = velocity.Unit
-predictedPos = predictedPos + (moveDirection * 5)
+predictedPos = predictedPos + (moveDirection * 3)
 end
 
 local state = humanoid:GetState()
