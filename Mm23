@@ -409,14 +409,14 @@ task.spawn(function()
             end
         end
         
-        task.wait(0.5) -- Verifica a cada 0.5 segundos
+        task.wait(0.1) -- Verifica a cada 0.5 segundos
     end
 end)
 
 local TabSheriff = Window:CreateTab("Sheriff", 4483362458)
 local autoShootEnabled = true
 local autoShootV2Enabled = false
-local shootMode = "Curve"  -- Agora inclui "Prever Murder"
+local shootMode = "Curve"
 local prioritizePing = true
 local antiflingEnabled = false
 
@@ -429,7 +429,6 @@ autoShootEnabled = Value
 end,
 })
 
--- Novo toggle Auto Shoot V2
 TabSheriff:CreateToggle({
 Name = "Auto Shoot V2 (Smart Vision)",
 CurrentValue = false,
@@ -439,7 +438,6 @@ autoShootV2Enabled = Value
 end,
 })
 
--- ✅ DROPDOWN ATUALIZADO COM "PREVER MURDER"
 TabSheriff:CreateDropdown({
 Name = "Choose Shoot Mode",
 Options = {"Curve", "Static", "Instantly", "Prever Murder"},
@@ -466,21 +464,18 @@ Flag = "AntiFlingToggle",
 Callback = function(Value)
 antiflingEnabled = Value
 if antiflingEnabled and LocalPlayer.Character then
--- Desabilita colisão entre seu personagem e os personagens dos outros players
 for _, otherPlayer in pairs(Players:GetPlayers()) do
 if otherPlayer ~= LocalPlayer and otherPlayer.Character then
 for _, myPart in pairs(LocalPlayer.Character:GetChildren()) do
 if myPart:IsA("BasePart") then
 for _, otherPart in pairs(otherPlayer.Character:GetChildren()) do
 if otherPart:IsA("BasePart") then
-myPart:SetNetworkOwner(nil) -- Garante que o servidor controla física pra evitar lag estranho
-myPart.CanCollide = true -- Seu personagem continua colidindo (com mapa)
+myPart:SetNetworkOwner(nil)
+myPart.CanCollide = true
 otherPart.CanCollide = true
--- Desativa colisão entre partes seu personagem e as partes do outro player
 pcall(function()
 myPart:GetPropertyChangedSignal("CanCollide"):Wait()
 end)
--- Remove colisão específica
 game:GetService("PhysicsService"):SetPartCollisionGroup(myPart, "NoCollidePlayers")
 game:GetService("PhysicsService"):SetPartCollisionGroup(otherPart, "NoCollidePlayers")
 end
@@ -490,7 +485,6 @@ end
 end
 end
 else
--- Reativa colisão normal quando desligar toggle
 if LocalPlayer.Character then
 for _, part in pairs(LocalPlayer.Character:GetChildren()) do
 if part:IsA("BasePart") then
@@ -500,6 +494,103 @@ end
 end
 end
 end
+end,
+})
+
+-- ✅ BOTÃO NA ABA: SHOOT MURDER
+TabSheriff:CreateButton({
+Name = "🎯 Shoot Murder (Teleport)",
+Callback = function()
+pcall(function()
+-- Verifica se está vivo e tem arma
+if not isPlayerAlive(LocalPlayer) then return end
+if not hasGun() then return end
+
+local char = LocalPlayer.Character
+local myRoot = char:FindFirstChild("HumanoidRootPart")
+if not myRoot then return end
+
+-- Salva posição original
+local originalPosition = myRoot.CFrame
+
+-- Encontra o murder
+local targetMurderer = findNearestMurderer()
+if not targetMurderer then 
+Rayfield:Notify({
+Title = "Murder não encontrado!",
+Content = "Nenhum murder foi encontrado no servidor.",
+Duration = 3
+})
+return 
+end
+
+local murdererRoot = targetMurderer.Character:FindFirstChild("HumanoidRootPart")
+if not murdererRoot then return end
+
+-- Equipa a arma
+local backpack = LocalPlayer:FindFirstChild("Backpack")
+local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
+if not gun then return end
+
+local humanoid = char:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+
+humanoid:EquipTool(gun)
+task.wait(0.1)
+
+-- Calcula posição atrás do murder
+local murdererLookDirection = murdererRoot.CFrame.LookVector
+local behindPosition = murdererRoot.Position - (murdererLookDirection * 5)
+local teleportCFrame = CFrame.new(behindPosition, murdererRoot.Position)
+
+-- Teleporta atrás do murder
+myRoot.CFrame = teleportCFrame
+task.wait(0.1)
+
+-- Verifica se ainda está vivo antes de atirar
+if not isPlayerAlive(LocalPlayer) then 
+myRoot.CFrame = originalPosition
+return 
+end
+
+-- Atira no murder
+local murdererPos = murdererRoot.Position
+local murdererVel = murdererRoot.Velocity
+local predicted = murdererPos
+
+if shootMode == "Curve" then
+predicted = murdererPos + murdererVel * getPingTime()
+elseif shootMode == "Static" then
+predicted = murdererPos
+elseif shootMode == "Prever Murder" then
+local predictedPos = predictMurdererPosition(targetMurderer)
+if predictedPos then predicted = predictedPos end
+elseif shootMode == "Instantly" then
+predicted = murdererPos
+end
+
+-- Executa o tiro
+pcall(function()
+if isPlayerAlive(LocalPlayer) then
+local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+gunRemote:InvokeServer(1, predicted, "AH2")
+end
+end)
+
+-- Aguarda um pouco e volta para posição original
+task.wait(0.2)
+if isPlayerAlive(LocalPlayer) then
+myRoot.CFrame = originalPosition
+end
+
+-- Notificação de sucesso
+Rayfield:Notify({
+Title = "Shot Executed!",
+Content = "Teleportou, atirou no murder e voltou!",
+Duration = 2
+})
+end)
 end,
 })
 
@@ -521,7 +612,7 @@ local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack an
 return hasKnife ~= nil
 end
 
--- ✅ NOVA FUNÇÃO: Encontrar o murder mais próximo
+-- Função para encontrar o murder mais próximo
 local function findNearestMurderer()
 local myCharacter = LocalPlayer.Character
 if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then
@@ -548,7 +639,7 @@ end
 return nearestMurderer
 end
 
--- ✅ NOVA FUNÇÃO: Prever posição do murder
+-- Função para prever posição do murder
 local function predictMurdererPosition(murderer)
 if not murderer or not murderer.Character then return nil end
 local root = murderer.Character:FindFirstChild("HumanoidRootPart")
@@ -559,26 +650,22 @@ local velocity = root.Velocity
 local humanoid = murderer.Character:FindFirstChildOfClass("Humanoid")
 if not humanoid then return currentPos end
 
--- Calcula tempo de predição baseado na distância
 local myPos = LocalPlayer.Character.HumanoidRootPart.Position
 local distance = (currentPos - myPos).Magnitude
-local predictionTime = distance / 1000 + getPingTime() -- Ajusta baseado na distância
+local predictionTime = distance / 1000 + getPingTime()
 
--- Predição avançada
 local predictedPos = currentPos + (velocity * predictionTime)
 
--- Se estiver se movendo, adiciona predição extra na direção do movimento
 if velocity.Magnitude > 1 then
 local moveDirection = velocity.Unit
-predictedPos = predictedPos + (moveDirection * 5) -- 5 studs extra na direção
+predictedPos = predictedPos + (moveDirection * 5)
 end
 
--- Se estiver pulando, prediz posição de queda
 local state = humanoid:GetState()
 if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
 local head = murderer.Character:FindFirstChild("Head")
 if head then
-predictedPos = head.Position + Vector3.new(0, 2, 0) -- Mira na cabeça quando pula
+predictedPos = head.Position + Vector3.new(0, 2, 0)
 end
 end
 
@@ -614,32 +701,27 @@ local myCharacter = LocalPlayer.Character
 local myRoot = myCharacter.HumanoidRootPart
 local murdererRoot = murdererCharacter.HumanoidRootPart
 
--- Verifica se a distância não é muito grande (opcional)
 local distance = (murdererRoot.Position - myRoot.Position).Magnitude
-if distance > 150 then return false end -- Não atira se estiver muito longe
+if distance > 150 then return false end
 
--- Calcula direção para o assassino
 local directionToMurderer = (murdererRoot.Position - myRoot.Position).Unit
 local myLookDirection = myRoot.CFrame.LookVector
 
--- Verifica se está na frente, atrás, esquerda ou direita (não muito específico)
 local dotProduct = myLookDirection:Dot(directionToMurderer)
-local isInGeneralDirection = dotProduct > -0.7 -- Permite um campo de visão bem amplo
+local isInGeneralDirection = dotProduct > -0.7
 
--- Raycast para verificar se há obstáculos
 local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 raycastParams.FilterDescendantsInstances = {myCharacter, murdererCharacter}
 
 local raycastResult = Workspace:Raycast(myRoot.Position, murdererRoot.Position - myRoot.Position, raycastParams)
 
--- Se não há obstáculos ou se o obstáculo é muito longe, considera visível
 local isVisible = not raycastResult or (raycastResult.Distance > (murdererRoot.Position - myRoot.Position).Magnitude * 0.9)
 
 return isInGeneralDirection and isVisible
 end
 
--- Shoot button GUI
+-- Shoot button GUI (flutuante)
 local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 gui.Name = "ShootGui"
 gui.ResetOnSpawn = false
@@ -653,7 +735,21 @@ button.Font = Enum.Font.SourceSansBold
 button.TextSize = 14
 button.Text = "SHOOT"
 
--- Drag logic for the button
+-- Shoot Murder Button (flutuante)
+local shootMurderGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+shootMurderGui.Name = "ShootMurderGui"
+shootMurderGui.ResetOnSpawn = false
+
+local shootMurderButton = Instance.new("TextButton", shootMurderGui)
+shootMurderButton.Size = UDim2.new(0, 120, 0, 50)
+shootMurderButton.Position = UDim2.new(0.5, -60, 0.7, 0)
+shootMurderButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+shootMurderButton.TextColor3 = Color3.new(1, 1, 1)
+shootMurderButton.Font = Enum.Font.SourceSansBold
+shootMurderButton.TextSize = 12
+shootMurderButton.Text = "SHOOT MURDER"
+
+-- Drag logic for normal button
 local dragging, dragStart, startPos, dragInput
 button.InputBegan:Connect(function(input)
 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -681,6 +777,34 @@ button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, start
 end
 end)
 
+-- Drag logic for shoot murder button
+local dragging2, dragStart2, startPos2, dragInput2
+shootMurderButton.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging2 = true
+dragStart2 = input.Position
+startPos2 = shootMurderButton.Position
+input.Changed:Connect(function()
+if input.UserInputState == Enum.UserInputState.End then
+dragging2 = false
+end
+end)
+end
+end)
+
+shootMurderButton.InputChanged:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+dragInput2 = input
+end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+if input == dragInput2 and dragging2 then
+local delta = input.Position - dragStart2
+shootMurderButton.Position = UDim2.new(startPos2.X.Scale, startPos2.X.Offset + delta.X, startPos2.Y.Scale, startPos2.Y.Offset + delta.Y)
+end
+end)
+
 local function getPingTime()
 if not prioritizePing then return 0 end
 return 0.125
@@ -695,9 +819,7 @@ local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFir
 return gun ~= nil
 end
 
--- ✅ FUNÇÃO SHOOT ATUALIZADA COM PREVER MURDER
 local function shoot()
--- Verifica se está vivo antes de atirar
 if not isPlayerAlive(LocalPlayer) then return end
 if not hasGun() then return end
 
@@ -710,7 +832,6 @@ local backpack = LocalPlayer:FindFirstChild("Backpack")
 local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
 if not gun then return end
 
--- Verifica novamente se ainda está vivo
 if not isPlayerAlive(LocalPlayer) then return end
 
 local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -719,10 +840,8 @@ if not humanoid then return end
 humanoid:EquipTool(gun)
 task.wait(0.1)
 
--- Verifica mais uma vez antes de atirar
 if not isPlayerAlive(LocalPlayer) then return end
 
--- ✅ NOVA LÓGICA: Se modo for "Prever Murder", encontra o murder mais próximo
 if shootMode == "Prever Murder" then
 local targetMurderer = findNearestMurderer()
 if targetMurderer then
@@ -739,7 +858,6 @@ return
 end
 end
 else
--- Lógica original para outros modos
 for _, player in pairs(Players:GetPlayers()) do
 if player ~= LocalPlayer and player.Character then
 local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife"))
@@ -777,9 +895,93 @@ end
 end
 end
 
--- ✅ FUNÇÃO AUTO SHOOT V2 MELHORADA COM PREVER MURDER
+-- Função Shoot Murder Teleport
+local function shootMurderTeleport()
+if not isPlayerAlive(LocalPlayer) then return end
+if not hasGun() then return end
+
+TweenService:Create(shootMurderButton, TweenInfo.new(0.1), {Size = UDim2.new(0, 120, 0, 45)}):Play()
+task.wait(0.1)
+TweenService:Create(shootMurderButton, TweenInfo.new(0.1), {Size = UDim2.new(0, 120, 0, 50)}):Play()
+
+local char = LocalPlayer.Character
+local myRoot = char:FindFirstChild("HumanoidRootPart")
+if not myRoot then return end
+
+local originalPosition = myRoot.CFrame
+
+local targetMurderer = findNearestMurderer()
+if not targetMurderer then 
+Rayfield:Notify({
+Title = "Murder não encontrado!",
+Content = "Nenhum murder foi encontrado no servidor.",
+Duration = 3
+})
+return 
+end
+
+local murdererRoot = targetMurderer.Character:FindFirstChild("HumanoidRootPart")
+if not murdererRoot then return end
+
+local backpack = LocalPlayer:FindFirstChild("Backpack")
+local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
+if not gun then return end
+
+local humanoid = char:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+
+humanoid:EquipTool(gun)
+task.wait(0.1)
+
+local murdererLookDirection = murdererRoot.CFrame.LookVector
+local behindPosition = murdererRoot.Position - (murdererLookDirection * 5)
+local teleportCFrame = CFrame.new(behindPosition, murdererRoot.Position)
+
+myRoot.CFrame = teleportCFrame
+task.wait(0.1)
+
+if not isPlayerAlive(LocalPlayer) then 
+myRoot.CFrame = originalPosition
+return 
+end
+
+local murdererPos = murdererRoot.Position
+local murdererVel = murdererRoot.Velocity
+local predicted = murdererPos
+
+if shootMode == "Curve" then
+predicted = murdererPos + murdererVel * getPingTime()
+elseif shootMode == "Static" then
+predicted = murdererPos
+elseif shootMode == "Prever Murder" then
+local predictedPos = predictMurdererPosition(targetMurderer)
+if predictedPos then predicted = predictedPos end
+elseif shootMode == "Instantly" then
+predicted = murdererPos
+end
+
+pcall(function()
+if isPlayerAlive(LocalPlayer) then
+local gunRemote = workspace:WaitForChild(LocalPlayer.Name):WaitForChild("Gun")        
+:WaitForChild("KnifeLocal"):WaitForChild("CreateBeam"):WaitForChild("RemoteFunction")        
+gunRemote:InvokeServer(1, predicted, "AH2")
+end
+end)
+
+task.wait(0.2)
+if isPlayerAlive(LocalPlayer) then
+myRoot.CFrame = originalPosition
+end
+
+Rayfield:Notify({
+Title = "Shot Executed!",
+Content = "Teleportou, atirou no murder e voltou!",
+Duration = 2
+})
+end
+
+-- Auto Shoot V2
 local function autoShootV2()
--- Primeira verificação: está vivo e tem arma?
 if not isPlayerAlive(LocalPlayer) then return end
 if not hasGun() then return end
 
@@ -788,11 +990,9 @@ local backpack = LocalPlayer:FindFirstChild("Backpack")
 local gun = backpack and backpack:FindFirstChild("Gun") or char and char:FindFirstChild("Gun")
 if not gun then return end
 
--- ✅ NOVA LÓGICA: Se modo for "Prever Murder"
 if shootMode == "Prever Murder" then
 local targetMurderer = findNearestMurderer()
 if targetMurderer and isMurdererVisible(targetMurderer.Character) then
--- Verifica se ainda está vivo antes de equipar arma
 if not isPlayerAlive(LocalPlayer) then return end
 
 local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -801,7 +1001,6 @@ if not humanoid then return end
 humanoid:EquipTool(gun)
 task.wait(0.1)
 
--- Última verificação antes de atirar
 if not isPlayerAlive(LocalPlayer) then return end
 
 local predictedPos = predictMurdererPosition(targetMurderer)
@@ -818,20 +1017,16 @@ end
 return
 end
 
--- Lógica original para outros modos
 for _, player in pairs(Players:GetPlayers()) do
 if player ~= LocalPlayer and isMurdererSheriff(player) and player.Character then
--- Só atira se murder estiver no chão (exceto no modo Prever Murder)
 if not isMurdererOnGround(player.Character) then
 continue
 end
 
--- Verifica se o assassino está visível
 if isMurdererVisible(player.Character) then
 local root = player.Character:FindFirstChild("HumanoidRootPart")
 local head = player.Character:FindFirstChild("Head")
 if root and head then
--- Verifica novamente se ainda está vivo antes de equipar arma
 if not isPlayerAlive(LocalPlayer) then return end
 
 local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -840,18 +1035,15 @@ if not humanoid then return end
 humanoid:EquipTool(gun)
 task.wait(0.1)
 
--- Última verificação antes de atirar
 if not isPlayerAlive(LocalPlayer) then return end
 
 local pos = root.Position
 local vel = root.Velocity
 local predicted = pos
 
--- Se murder estiver pulando, atira acima da cabeça
 if isMurdererJumping(player.Character) then
 predicted = head.Position + Vector3.new(0, 3, 0)
 else
--- Murder no chão - usa sistema normal
 if shootMode == "Curve" then
 predicted = pos + vel * getPingTime()
 elseif shootMode == "Static" then
@@ -874,10 +1066,11 @@ end
 end
 
 button.MouseButton1Click:Connect(shoot)
+shootMurderButton.MouseButton1Click:Connect(function()
+pcall(shootMurderTeleport)
+end)
 
--- ✅ APENAS 2 LOOPS (SEM DUPLICAÇÃO!)
-
--- Loop do Auto Shoot original com proteção
+-- Loops
 task.spawn(function()
 while true do
 if autoShootEnabled and isPlayerAlive(LocalPlayer) then
@@ -889,7 +1082,6 @@ end
 end
 end)
 
--- Loop do Auto Shoot V2 (inteligente) com proteção
 task.spawn(function()
 while true do
 if autoShootV2Enabled and isPlayerAlive(LocalPlayer) then
@@ -901,11 +1093,8 @@ end
 end
 end)
 
--- Proteção adicional: pausa os scripts quando morre e reativa quando respawna
 LocalPlayer.CharacterAdded:Connect(function(character)
--- Espera um pouco para o character carregar completamente
 task.wait(2)
--- Os loops já vão detectar automaticamente que está vivo novamente
 end)
 
 local TabAuto = Window:CreateTab("Auto", 4483362458)
