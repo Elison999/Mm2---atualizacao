@@ -1405,3 +1405,371 @@ end
 task.wait(10)
 end
 end)
+
+local TabMurderer = Window:CreateTab("Murderer", 4483362458)
+local autoKillAllEnabled = false
+local fakeThrowing = false
+local fovRadius = 150
+local fovCircle = nil
+local killButton = nil
+local killButtonGui = nil
+
+-- Função para verificar se sou o murder
+local function isMurderer()
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    -- Verifica se tem a faca no character
+    local knife = character:FindFirstChild("Knife")
+    if knife then return true end
+    
+    -- Verifica se tem a faca no backpack
+    if LocalPlayer.Backpack and LocalPlayer.Backpack:FindFirstChild("Knife") then
+        return true
+    end
+    
+    return false
+end
+
+-- Função para verificar se um player é válido para matar
+local function isValidTarget(player)
+    if player == LocalPlayer then return false end
+    if not player.Character then return false end
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    if not player.Character:FindFirstChild("HumanoidRootPart") then return false end
+    return true
+end
+
+-- Função para matar um player
+local function killPlayer(targetPlayer)
+    if not isMurderer() then return end
+    if not isValidTarget(targetPlayer) then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local knife = character:FindFirstChild("Knife") or (LocalPlayer.Backpack and LocalPlayer.Backpack:FindFirstChild("Knife"))
+    if not knife then return end
+    
+    -- Equipa a faca
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid and knife.Parent == LocalPlayer.Backpack then
+        humanoid:EquipTool(knife)
+        task.wait(0.1)
+    end
+    
+    -- Pega posição do target
+    local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetRoot then return end
+    
+    -- Executa o kill
+    pcall(function()
+        knife:Activate()
+        -- Teleporta momentaneamente para garantir o kill
+        local myRoot = character:FindFirstChild("HumanoidRootPart")
+        if myRoot then
+            local originalPos = myRoot.CFrame
+            myRoot.CFrame = targetRoot.CFrame
+            task.wait(0.1)
+            myRoot.CFrame = originalPos
+        end
+    end)
+end
+
+-- Toggle Auto Kill All
+TabMurderer:CreateToggle({
+    Name = "Auto Kill All (Murder Only)",
+    CurrentValue = false,
+    Flag = "AutoKillAllToggle",
+    Callback = function(Value)
+        autoKillAllEnabled = Value
+    end,
+})
+
+-- Função para criar o círculo FOV
+local function createFOVCircle()
+    local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+    screenGui.Name = "FOVCircle"
+    screenGui.ResetOnSpawn = false
+    
+    local circle = Instance.new("Frame", screenGui)
+    circle.Name = "Circle"
+    circle.Size = UDim2.new(0, fovRadius * 2, 0, fovRadius * 2)
+    circle.Position = UDim2.new(0.5, -fovRadius, 0.5, -fovRadius)
+    circle.BackgroundTransparency = 1
+    circle.BorderSizePixel = 0
+    
+    local circleCorner = Instance.new("UICorner", circle)
+    circleCorner.CornerRadius = UDim.new(0.5, 0)
+    
+    local circleStroke = Instance.new("UIStroke", circle)
+    circleStroke.Color = Color3.fromRGB(255, 0, 0)
+    circleStroke.Thickness = 2
+    circleStroke.Transparency = 0.3
+    
+    return screenGui, circle
+end
+
+-- Função para criar o botão Kill
+local function createKillButton()
+    local buttonGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+    buttonGui.Name = "KillButtonGui"
+    buttonGui.ResetOnSpawn = false
+    
+    local button = Instance.new("TextButton", buttonGui)
+    button.Size = UDim2.new(0, 100, 0, 100)
+    button.Position = UDim2.new(0.5, -50, 0.6, 0)
+    button.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Font = Enum.Font.SourceSansBold
+    button.TextSize = 14
+    button.Text = "KILL"
+    button.BorderSizePixel = 0
+    
+    local buttonCorner = Instance.new("UICorner", button)
+    buttonCorner.CornerRadius = UDim.new(0.5, 0)
+    
+    -- Drag logic
+    local dragging, dragStart, startPos, dragInput
+    button.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = button.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    button.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    return buttonGui, button
+end
+
+-- Função para encontrar player no FOV
+local function getPlayerInFOV()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+    
+    local camera = workspace.CurrentCamera
+    local myPosition = LocalPlayer.Character.HumanoidRootPart.Position
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if isValidTarget(player) then
+            local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if targetRoot then
+                -- Converte posição 3D para 2D na tela
+                local screenPoint, onScreen = camera:WorldToScreenPoint(targetRoot.Position)
+                
+                if onScreen then
+                    -- Calcula distância do centro da tela
+                    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+                    local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - screenCenter).Magnitude
+                    
+                    -- Verifica se está dentro do FOV
+                    if distance <= fovRadius then
+                        return player
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- Função para kill com teleport
+local function killWithTeleport()
+    if not isMurderer() then 
+        Rayfield:Notify({
+            Title = "Você não é o Murder!",
+            Content = "Você precisa ser o assassino para usar esta função.",
+            Duration = 3
+        })
+        return 
+    end
+    
+    local targetPlayer = getPlayerInFOV()
+    if not targetPlayer then
+        Rayfield:Notify({
+            Title = "Nenhum target no FOV!",
+            Content = "Não há ninguém dentro do círculo FOV.",
+            Duration = 2
+        })
+        return
+    end
+    
+    local character = LocalPlayer.Character
+    local myRoot = character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+    
+    -- Salva posição original
+    local originalPosition = myRoot.CFrame
+    
+    -- Equipa a faca
+    local knife = character:FindFirstChild("Knife") or (LocalPlayer.Backpack and LocalPlayer.Backpack:FindFirstChild("Knife"))
+    if knife then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid and knife.Parent == LocalPlayer.Backpack then
+            humanoid:EquipTool(knife)
+            task.wait(0.1)
+        end
+    end
+    
+    -- Teleporta para o target
+    local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if targetRoot then
+        myRoot.CFrame = targetRoot.CFrame
+        task.wait(0.1)
+        
+        -- Executa o kill
+        if knife then
+            knife:Activate()
+        end
+        
+        task.wait(0.2)
+        
+        -- Volta para posição original
+        myRoot.CFrame = originalPosition
+        
+        Rayfield:Notify({
+            Title = "Kill Executed!",
+            Content = "Matou " .. targetPlayer.Name .. " e voltou!",
+            Duration = 2
+        })
+    end
+end
+
+-- Slider para ajustar FOV
+TabMurderer:CreateSlider({
+    Name = "FOV Circle Size",
+    Range = {50, 300},
+    Increment = 10,
+    Suffix = " pixels",
+    CurrentValue = 150,
+    Flag = "FOVSizeSlider",
+    Callback = function(Value)
+        fovRadius = Value
+        -- Atualiza o círculo se existir
+        if fovCircle then
+            fovCircle.Size = UDim2.new(0, fovRadius * 2, 0, fovRadius * 2)
+            fovCircle.Position = UDim2.new(0.5, -fovRadius, 0.5, -fovRadius)
+        end
+    end,
+})
+
+-- Toggle Fake Throwing Knife
+TabMurderer:CreateToggle({
+    Name = "Fake Throwing Knife (FOV + Kill Button)",
+    CurrentValue = false,
+    Flag = "FakeThrowingToggle",
+    Callback = function(Value)
+        fakeThrowing = Value
+        
+        if Value then
+            -- Cria círculo FOV e botão Kill
+            local circleGui, circle = createFOVCircle()
+            local buttonGui, button = createKillButton()
+            
+            fovCircle = circle
+            killButton = button
+            killButtonGui = buttonGui
+            
+            -- Conecta função do botão
+            button.MouseButton1Click:Connect(function()
+                pcall(killWithTeleport)
+            end)
+        else
+            -- Remove círculo FOV e botão
+            if LocalPlayer.PlayerGui:FindFirstChild("FOVCircle") then
+                LocalPlayer.PlayerGui.FOVCircle:Destroy()
+            end
+            if LocalPlayer.PlayerGui:FindFirstChild("KillButtonGui") then
+                LocalPlayer.PlayerGui.KillButtonGui:Destroy()
+            end
+            fovCircle = nil
+            killButton = nil
+            killButtonGui = nil
+        end
+    end,
+})
+
+-- Loop do Auto Kill All
+task.spawn(function()
+    while true do
+        if autoKillAllEnabled and isMurderer() then
+            for _, player in pairs(Players:GetPlayers()) do
+                if isValidTarget(player) then
+                    pcall(function()
+                        killPlayer(player)
+                    end)
+                    task.wait(0.5) -- Pausa entre kills para parecer mais natural
+                end
+            end
+        end
+        task.wait(1) -- Verifica a cada segundo
+    end
+end)
+
+-- Atualização do círculo FOV em tempo real
+task.spawn(function()
+    while true do
+        if fakeThrowing and fovCircle then
+            -- Atualiza a cor do círculo baseado se há target no FOV
+            local targetInFOV = getPlayerInFOV()
+            if targetInFOV then
+                fovCircle.UIStroke.Color = Color3.fromRGB(0, 255, 0) -- Verde quando há target
+            else
+                fovCircle.UIStroke.Color = Color3.fromRGB(255, 0, 0) -- Vermelho quando não há target
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Cleanup quando o character respawna
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(2)
+    -- Recriar elementos se necessário
+    if fakeThrowing then
+        -- Remove e recria para evitar bugs
+        if LocalPlayer.PlayerGui:FindFirstChild("FOVCircle") then
+            LocalPlayer.PlayerGui.FOVCircle:Destroy()
+        end
+        if LocalPlayer.PlayerGui:FindFirstChild("KillButtonGui") then
+            LocalPlayer.PlayerGui.KillButtonGui:Destroy()
+        end
+        
+        task.wait(0.5)
+        
+        -- Recria se ainda estiver ativo
+        if fakeThrowing then
+            local circleGui, circle = createFOVCircle()
+            local buttonGui, button = createKillButton()
+            
+            fovCircle = circle
+            killButton = button
+            killButtonGui = buttonGui
+            
+            button.MouseButton1Click:Connect(function()
+                pcall(killWithTeleport)
+            end)
+        end
+    end
+end)
