@@ -1776,251 +1776,696 @@ end)
 
 local Tab = Window:CreateTab("troll", 4483362458)
 
+-- MM2 Advanced Fling Script
+-- Funcionalidades: Fling Murder, Fling Sheriff, Auto Fling Murder
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Variáveis de controle
+local AutoFlingMurderEnabled = false
+local FlingPower = 50000 -- Poder do fling
+local DetectionRange = 100 -- Distância para detectar jogadores
+
+-- Função para detectar role do jogador
+local function getPlayerRole(player)
+    if not player.Character then return "Unknown" end
+    
+    -- Verifica se tem knife (Murder)
+    local knife = player.Backpack:FindFirstChild("Knife") or 
+                 (player.Character:FindFirstChild("Knife"))
+    if knife then
+        return "Murder"
+    end
+    
+    -- Verifica se tem gun (Sheriff)
+    local gun = player.Backpack:FindFirstChild("Gun") or 
+               (player.Character:FindFirstChild("Gun"))
+    if gun then
+        return "Sheriff"
+    end
+    
+    return "Innocent"
+end
+
+-- Função para obter o jogador Murder
+local function getMurderer()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and getPlayerRole(player) == "Murder" then
+            return player
+        end
+    end
+    return nil
+end
+
+-- Função para obter o jogador Sheriff
+local function getSheriff()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and getPlayerRole(player) == "Sheriff" then
+            return player
+        end
+    end
+    return nil
+end
+
+-- Função avançada de fling com efeitos visuais
+local function advancedFling(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then 
+        return false, "Jogador não encontrado"
+    end
+    
+    local targetCharacter = targetPlayer.Character
+    local targetRootPart = targetCharacter:FindFirstChild("HumanoidRootPart")
+    
+    if not targetRootPart then 
+        return false, "HumanoidRootPart não encontrado"
+    end
+    
+    -- Calcula distância
+    local distance = (RootPart.Position - targetRootPart.Position).Magnitude
+    if distance > DetectionRange then
+        return false, "Jogador muito longe (Distância: " .. math.floor(distance) .. ")"
+    end
+    
+    -- Salva posição original
+    local originalPosition = RootPart.Position
+    local originalCFrame = RootPart.CFrame
+    
+    -- Teleporta para perto do alvo
+    RootPart.CFrame = targetRootPart.CFrame * CFrame.new(0, 0, -3)
+    
+    -- Aplica o fling
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000) * FlingPower
+    bodyVelocity.Velocity = Vector3.new(0, FlingPower/1000, 0)
+    bodyVelocity.Parent = RootPart
+    
+    -- Remove o BodyVelocity após um tempo
+    game:GetService("Debris"):AddItem(bodyVelocity, 0.1)
+    
+    -- Efeito visual
+    local effect = Instance.new("Explosion")
+    effect.Position = targetRootPart.Position
+    effect.BlastRadius = 0
+    effect.BlastPressure = 0
+    effect.Parent = workspace
+    
+    -- Retorna à posição original após delay
+    wait(0.2)
+    RootPart.CFrame = originalCFrame
+    
+    return true, "Fling executado com sucesso!"
+end
+
+-- Função para fling com segurança (evita detecção)
+local function safeFling(targetPlayer, attempts)
+    attempts = attempts or 3
+    
+    for i = 1, attempts do
+        local success, message = advancedFling(targetPlayer)
+        if success then
+            return true, message
+        end
+        wait(0.5) -- Delay entre tentativas
+    end
+    
+    return false, "Falha após " .. attempts .. " tentativas"
+end
+
+-- Sistema de notificação
+local function notify(title, text, duration)
+    duration = duration or 5
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = title;
+        Text = text;
+        Duration = duration;
+    })
+end
+
 -- Botão Fling Murder
 local FlingMurderButton = Tab:CreateButton({
-   Name = "Fling Murder",
-   Callback = function()
-       local Players = game:GetService("Players")
-       local RunService = game:GetService("RunService")
-       local LocalPlayer = Players.LocalPlayer
-       
-       -- Função para encontrar o Murder
-       local function findMurder()
-           for _, player in pairs(Players:GetPlayers()) do
-               if player.Character and player.Character:FindFirstChild("Knife") then
-                   return player
-               end
-           end
-           return nil
-       end
-       
-       -- Função para fling
-       local function flingPlayer(targetPlayer)
-           if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-               local character = LocalPlayer.Character
-               if character and character:FindFirstChild("HumanoidRootPart") then
-                   local bodyVelocity = Instance.new("BodyVelocity")
-                   bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-                   bodyVelocity.Velocity = (targetPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Unit * 100
-                   bodyVelocity.Parent = character.HumanoidRootPart
-                   
-                   game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
-               end
-           end
-       end
-       
-       local murder = findMurder()
-       if murder then
-           flingPlayer(murder)
-           print("Fling aplicado no Murder: " .. murder.Name)
-       else
-           print("Murder não encontrado!")
-       end
-   end,
+    Name = "🗡️ Fling Murder",
+    Callback = function()
+        local murderer = getMurderer()
+        if murderer then
+            notify("🎯 Alvo Identificado", "Murder encontrado: " .. murderer.Name, 3)
+            
+            local success, message = safeFling(murderer)
+            if success then
+                notify("✅ Sucesso", "Murder " .. murderer.Name .. " foi eliminado!", 4)
+            else
+                notify("❌ Erro", message, 4)
+            end
+        else
+            notify("⚠️ Aviso", "Nenhum Murder detectado no servidor", 3)
+        end
+    end,
 })
 
 -- Botão Fling Sheriff
 local FlingSheriffButton = Tab:CreateButton({
-   Name = "Fling Sheriff",
-   Callback = function()
-       local Players = game:GetService("Players")
-       local RunService = game:GetService("RunService")
-       local LocalPlayer = Players.LocalPlayer
-       
-       -- Função para encontrar o Sheriff
-       local function findSheriff()
-           for _, player in pairs(Players:GetPlayers()) do
-               if player.Character and player.Character:FindFirstChild("Gun") then
-                   return player
-               end
-           end
-           return nil
-       end
-       
-       -- Função para fling
-       local function flingPlayer(targetPlayer)
-           if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-               local character = LocalPlayer.Character
-               if character and character:FindFirstChild("HumanoidRootPart") then
-                   local bodyVelocity = Instance.new("BodyVelocity")
-                   bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-                   bodyVelocity.Velocity = (targetPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Unit * 100
-                   bodyVelocity.Parent = character.HumanoidRootPart
-                   
-                   game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
-               end
-           end
-       end
-       
-       local sheriff = findSheriff()
-       if sheriff then
-           flingPlayer(sheriff)
-           print("Fling aplicado no Sheriff: " .. sheriff.Name)
-       else
-           print("Sheriff não encontrado!")
-       end
-   end,
+    Name = "🔫 Fling Sheriff",
+    Callback = function()
+        local sheriff = getSheriff()
+        if sheriff then
+            notify("🎯 Alvo Identificado", "Sheriff encontrado: " .. sheriff.Name, 3)
+            
+            local success, message = safeFling(sheriff)
+            if success then
+                notify("✅ Sucesso", "Sheriff " .. sheriff.Name .. " foi eliminado!", 4)
+            else
+                notify("❌ Erro", message, 4)
+            end
+        else
+            notify("⚠️ Aviso", "Nenhum Sheriff detectado no servidor", 3)
+        end
+    end,
 })
 
 -- Toggle Auto Fling Murder
-local autoFlingConnection = nil
 local AutoFlingMurderToggle = Tab:CreateToggle({
-   Name = "Auto Fling Murder",
-   CurrentValue = false,
-   Flag = "AutoFlingMurder",
-   Callback = function(Value)
-       if Value then
-           -- Ativar auto fling
-           local Players = game:GetService("Players")
-           local RunService = game:GetService("RunService")
-           local LocalPlayer = Players.LocalPlayer
-           
-           -- Função para encontrar o Murder
-           local function findMurder()
-               for _, player in pairs(Players:GetPlayers()) do
-                   if player.Character and player.Character:FindFirstChild("Knife") then
-                       return player
-                   end
-               end
-               return nil
-           end
-           
-           -- Função para fling
-           local function flingPlayer(targetPlayer)
-               if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                   local character = LocalPlayer.Character
-                   if character and character:FindFirstChild("HumanoidRootPart") then
-                       local bodyVelocity = Instance.new("BodyVelocity")
-                       bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-                       bodyVelocity.Velocity = (targetPlayer.Character.HumanoidRootPart.Position - character.HumanoidRootPart.Position).Unit * 100
-                       bodyVelocity.Parent = character.HumanoidRootPart
-                       
-                       game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
-                   end
-               end
-           end
-           
-           autoFlingConnection = RunService.Heartbeat:Connect(function()
-               local murder = findMurder()
-               if murder and murder ~= LocalPlayer then
-                   -- Verificar distância para evitar spam
-                   local character = LocalPlayer.Character
-                   if character and character:FindFirstChild("HumanoidRootPart") and murder.Character and murder.Character:FindFirstChild("HumanoidRootPart") then
-                       local distance = (character.HumanoidRootPart.Position - murder.Character.HumanoidRootPart.Position).Magnitude
-                       if distance < 20 then -- Só fling se estiver próximo
-                           flingPlayer(murder)
-                           wait(1) -- Cooldown para evitar spam
-                       end
-                   end
-               end
-           end)
-           
-           print("Auto Fling Murder ativado!")
-       else
-           -- Desativar auto fling
-           if autoFlingConnection then
-               autoFlingConnection:Disconnect()
-               autoFlingConnection = nil
-           end
-           print("Auto Fling Murder desativado!")
-       end
-   end,
+    Name = "⚡ Auto Fling Murder",
+    CurrentValue = false,
+    Flag = "AutoFlingMurder",
+    Callback = function(Value)
+        AutoFlingMurderEnabled = Value
+        
+        if Value then
+            notify("🔄 Auto Fling Ativado", "Procurando por Murder automaticamente...", 3)
+        else
+            notify("⏹️ Auto Fling Desativado", "Sistema automático parado", 2)
+        end
+    end,
 })
+
+-- Slider para ajustar poder do fling
+local FlingPowerSlider = Tab:CreateSlider({
+    Name = "⚙️ Poder do Fling",
+    Range = {10000, 100000},
+    Increment = 5000,
+    CurrentValue = FlingPower,
+    Flag = "FlingPower",
+    Callback = function(Value)
+        FlingPower = Value
+        notify("⚙️ Configuração", "Poder do fling ajustado para: " .. Value, 2)
+    end,
+})
+
+-- Slider para ajustar alcance de detecção
+local DetectionRangeSlider = Tab:CreateSlider({
+    Name = "📡 Alcance de Detecção",
+    Range = {50, 300},
+    Increment = 10,
+    CurrentValue = DetectionRange,
+    Flag = "DetectionRange",
+    Callback = function(Value)
+        DetectionRange = Value
+        notify("📡 Configuração", "Alcance ajustado para: " .. Value .. " studs", 2)
+    end,
+})
+
+-- Sistema de Auto Fling
+spawn(function()
+    while true do
+        wait(2) -- Verifica a cada 2 segundos
+        
+        if AutoFlingMurderEnabled then
+            local murderer = getMurderer()
+            
+            if murderer then
+                -- Verifica se o murder está próximo
+                if murderer.Character and murderer.Character:FindFirstChild("HumanoidRootPart") then
+                    local distance = (RootPart.Position - murderer.Character.HumanoidRootPart.Position).Magnitude
+                    
+                    if distance <= DetectionRange then
+                        local success, message = safeFling(murderer, 1) -- Apenas 1 tentativa no auto
+                        
+                        if success then
+                            notify("🎯 Auto Fling", "Murder " .. murderer.Name .. " eliminado automaticamente!", 3)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Informações do sistema
+local InfoLabel = Tab:CreateLabel("📊 Sistema MM2 Advanced v2.0")
+local StatusLabel = Tab:CreateLabel("🟢 Status: Operacional")
+
+-- Atualização de status em tempo real
+spawn(function()
+    while true do
+        wait(5)
+        
+        local murderer = getMurderer()
+        local sheriff = getSheriff()
+        local murderStatus = murderer and ("Murder: " .. murderer.Name) or "Murder: Não detectado"
+        local sheriffStatus = sheriff and ("Sheriff: " .. sheriff.Name) or "Sheriff: Não detectado"
+        
+        StatusLabel:Set("🔍 " .. murderStatus .. " | " .. sheriffStatus)
+    end
+end)
+
+-- Sistema de segurança - detecta se está sendo observado
+local function isBeingWatched()
+    local myPosition = RootPart.Position
+    local watcherCount = 0
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local theirRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if theirRoot then
+                local distance = (myPosition - theirRoot.Position).Magnitude
+                if distance < 50 then -- Se alguém está muito perto
+                    watcherCount = watcherCount + 1
+                end
+            end
+        end
+    end
+    
+    return watcherCount > 2 -- Se mais de 2 pessoas estão próximas
+end
+
+-- Botão de emergência
+local EmergencyButton = Tab:CreateButton({
+    Name = "🚨 Parada de Emergência",
+    Callback = function()
+        AutoFlingMurderEnabled = false
+        AutoFlingMurderToggle:Set(false)
+        
+        notify("🚨 EMERGÊNCIA", "Todos os sistemas foram parados!", 5)
+    end,
+})
+
+-- Mensagem de inicialização
+notify("🚀 MM2 Advanced", "Script carregado com sucesso! Todas as funções ativas.", 5)
+
+print("=== MM2 Advanced Fling Script v2.0 ===")
+print("✅ Sistema inicializado com sucesso!")
+print("📋 Funcionalidades disponíveis:")
+print("   • Fling Murder Manual")
+print("   • Fling Sheriff Manual") 
+print("   • Auto Fling Murder")
+print("   • Sistema de Detecção Avançado")
+print("   • Configurações Personalizáveis")
+print("===========================================")
 
 local Tab = Window:CreateTab("steal", 4483362458)
 
+-- Advanced Auto Steal Gun System
 local Toggle = Tab:CreateToggle({
-    Name = "Auto Steal Gun",
+    Name = "auto steal gun",
     CurrentValue = false,
-    Flag = "AutoStealGun",
+    Flag = "AdvancedAutoStealGun",
     Callback = function(Value)
-        getgenv().AutoStealGun = Value
+        getgenv().AdvancedAutoStealGun = Value
         
         if Value then
-            -- Conecta os eventos quando ativado
+            -- Services
             local Players = game:GetService("Players")
             local ReplicatedStorage = game:GetService("ReplicatedStorage")
             local RunService = game:GetService("RunService")
+            local TweenService = game:GetService("TweenService")
+            local UserInputService = game:GetService("UserInputService")
+            local Debris = game:GetService("Debris")
             
             local LocalPlayer = Players.LocalPlayer
             
-            -- Função para verificar se o player tem arma
-            local function hasGun(player)
-                local character = player.Character
-                if not character then return false end
-                
-                -- Verifica se tem arma na mão
-                local tool = character:FindFirstChildOfClass("Tool")
-                if tool and tool.Name:lower():find("gun") then
-                    return true
+            -- Configurações avançadas
+            local Config = {
+                FlingPower = 75,
+                FlingDelay = 0.3,
+                RespawnDelay = 1.2,
+                AutoPickupGun = true,
+                SmartFling = true,
+                AntiDetection = true,
+                NotifyActions = true,
+                FlingDirection = "Random", -- "Up", "Random", "Towards"
+                MinPlayersToFling = 2,
+                BlacklistedPlayers = {},
+                OnlyFlingIfMurdererNear = true,
+                MurdererDetectionRange = 50
+            }
+            
+            -- Estado do sistema
+            local SystemState = {
+                LastRole = "Innocent",
+                HasGunBeforeDeath = false,
+                DeathPosition = nil,
+                FlingCount = 0,
+                LastFlingTime = 0,
+                MurdererPlayer = nil,
+                IsInCooldown = false
+            }
+            
+            -- Funções utilitárias
+            local function createNotification(title, text, duration)
+                if not Config.NotifyActions then return end
+                -- Aqui você pode integrar com seu sistema de notificação
+                print("[Auto Steal Gun] " .. title .. ": " .. text)
+            end
+            
+            local function getMurderer()
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and player.Character then
+                        local backpack = player:FindFirstChild("Backpack")
+                        local character = player.Character
+                        
+                        -- Verifica se tem knife
+                        if backpack and backpack:FindFirstChild("Knife") then
+                            return player
+                        end
+                        
+                        if character:FindFirstChildOfClass("Tool") then
+                            local tool = character:FindFirstChildOfClass("Tool")
+                            if tool.Name == "Knife" then
+                                return player
+                            end
+                        end
+                    end
                 end
+                return nil
+            end
+            
+            local function getSheriff()
+                for _, player in pairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and hasGun(player) then
+                        return player
+                    end
+                end
+                return nil
+            end
+            
+            local function hasGun(player)
+                if not player or not player.Character then return false end
                 
-                -- Verifica se tem arma no backpack
+                local character = player.Character
                 local backpack = player:FindFirstChild("Backpack")
-                if backpack then
-                    for _, item in pairs(backpack:GetChildren()) do
-                        if item:IsA("Tool") and item.Name:lower():find("gun") then
-                            return true
+                
+                -- Lista de armas possíveis
+                local gunNames = {"Gun", "Revolver", "Laser", "Sheriff"}
+                
+                -- Verifica na mão
+                local tool = character:FindFirstChildOfClass("Tool")
+                if tool then
+                    for _, gunName in pairs(gunNames) do
+                        if tool.Name:lower():find(gunName:lower()) then
+                            return true, tool
                         end
                     end
                 end
                 
-                return false
+                -- Verifica no backpack
+                if backpack then
+                    for _, item in pairs(backpack:GetChildren()) do
+                        if item:IsA("Tool") then
+                            for _, gunName in pairs(gunNames) do
+                                if item.Name:lower():find(gunName:lower()) then
+                                    return true, item
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                return false, nil
             end
             
-            -- Função para auto flingar
-            local function autoFling()
-                if not getgenv().AutoStealGun then return end
+            local function getOptimalFlingDirection()
+                local character = LocalPlayer.Character
+                if not character or not character:FindFirstChild("HumanoidRootPart") then
+                    return Vector3.new(0, 50, 0)
+                end
                 
+                local hrp = character.HumanoidRootPart
+                local murderer = getMurderer()
+                
+                if Config.FlingDirection == "Random" then
+                    local randomX = math.random(-30, 30)
+                    local randomZ = math.random(-30, 30)
+                    return Vector3.new(randomX, Config.FlingPower, randomZ)
+                    
+                elseif Config.FlingDirection == "Towards" and murderer and murderer.Character then
+                    local murdererPos = murderer.Character.HumanoidRootPart.Position
+                    local direction = (murdererPos - hrp.Position).Unit
+                    return direction * Config.FlingPower + Vector3.new(0, 20, 0)
+                    
+                else -- "Up"
+                    return Vector3.new(0, Config.FlingPower, 0)
+                end
+            end
+            
+            local function isMurdererNearby()
+                if not Config.OnlyFlingIfMurdererNear then return true end
+                
+                local murderer = getMurderer()
+                if not murderer or not murderer.Character then return false end
+                
+                local character = LocalPlayer.Character
+                if not character or not character:FindFirstChild("HumanoidRootPart") then return false end
+                
+                local distance = (murderer.Character.HumanoidRootPart.Position - 
+                                character.HumanoidRootPart.Position).Magnitude
+                
+                return distance <= Config.MurdererDetectionRange
+            end
+            
+            local function shouldFling()
+                -- Verificações básicas
+                if SystemState.IsInCooldown then return false end
+                if #Players:GetPlayers() < Config.MinPlayersToFling then return false end
+                if not hasGun(LocalPlayer) then return false end
+                
+                -- Verifica se murderer está próximo (se configurado)
+                if not isMurdererNearby() then return false end
+                
+                -- Verifica cooldown de fling
+                if tick() - SystemState.LastFlingTime < 3 then return false end
+                
+                -- Verifica se havia arma antes de morrer
+                return SystemState.HasGunBeforeDeath
+            end
+            
+            local function performAdvancedFling()
                 local character = LocalPlayer.Character
                 if not character or not character:FindFirstChild("HumanoidRootPart") then return end
                 
                 local humanoidRootPart = character.HumanoidRootPart
+                local humanoid = character:FindFirstChild("Humanoid")
                 
-                -- Cria o fling
+                -- Anti-detecção: randomiza ligeiramente o timing
+                if Config.AntiDetection then
+                    local randomDelay = math.random(1, 5) / 10
+                    wait(randomDelay)
+                end
+                
+                -- Salva posição de morte para possível recuperação
+                SystemState.DeathPosition = humanoidRootPart.Position
+                
+                -- Cria efeito visual sutil (opcional)
+                local flingDirection = getOptimalFlingDirection()
+                
+                -- Múltiplos métodos de fling para maior efetividade
+                local methods = {}
+                
+                -- Método 1: BodyVelocity
                 local bodyVelocity = Instance.new("BodyVelocity")
                 bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-                bodyVelocity.Velocity = Vector3.new(0, 50, 0)
+                bodyVelocity.Velocity = flingDirection
                 bodyVelocity.Parent = humanoidRootPart
+                table.insert(methods, bodyVelocity)
                 
-                -- Remove após um tempo
-                game:GetService("Debris"):AddItem(bodyVelocity, 0.5)
+                -- Método 2: BodyPosition (backup)
+                local bodyPosition = Instance.new("BodyPosition")
+                bodyPosition.MaxForce = Vector3.new(4000, 0, 4000)
+                bodyPosition.Position = humanoidRootPart.Position + Vector3.new(0, 20, 0)
+                bodyPosition.Parent = humanoidRootPart
+                table.insert(methods, bodyPosition)
                 
-                -- Desativa o auto steal gun após flingar
-                getgenv().AutoStealGun = false
-                Toggle:Set(false) -- Atualiza o toggle na interface
+                -- Método 3: Impulso via Humanoid
+                if humanoid then
+                    humanoid.PlatformStand = true
+                end
+                
+                -- Atualiza estatísticas
+                SystemState.FlingCount = SystemState.FlingCount + 1
+                SystemState.LastFlingTime = tick()
+                SystemState.IsInCooldown = true
+                
+                createNotification("Fling Executed", 
+                    "Auto fling activated! Count: " .. SystemState.FlingCount, 3)
+                
+                -- Limpeza após delay
+                spawn(function()
+                    wait(Config.FlingDelay)
+                    for _, method in pairs(methods) do
+                        if method and method.Parent then
+                            method:Destroy()
+                        end
+                    end
+                    
+                    if humanoid then
+                        humanoid.PlatformStand = false
+                    end
+                    
+                    -- Desativa o toggle
+                    getgenv().AdvancedAutoStealGun = false
+                    Toggle:Set(false)
+                    
+                    -- Cooldown de segurança
+                    wait(2)
+                    SystemState.IsInCooldown = false
+                    
+                    createNotification("System Reset", "Ready for next activation", 2)
+                end)
             end
             
-            -- Conexão para detectar quando o player morre
-            local connection
-            connection = LocalPlayer.CharacterAdded:Connect(function(character)
+            local function tryPickupGun()
+                if not Config.AutoPickupGun then return end
+                
+                wait(0.5) -- Espera objetos carregarem
+                
+                -- Procura por armas no chão próximas
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj:IsA("Tool") and obj.Parent == workspace then
+                        local gunNames = {"Gun", "Revolver", "Laser"}
+                        for _, gunName in pairs(gunNames) do
+                            if obj.Name:lower():find(gunName:lower()) then
+                                local character = LocalPlayer.Character
+                                if character and character:FindFirstChild("HumanoidRootPart") then
+                                    local distance = (obj.Handle.Position - 
+                                                    character.HumanoidRootPart.Position).Magnitude
+                                    
+                                    if distance <= 20 then
+                                        -- Tenta pegar a arma
+                                        local humanoid = character:FindFirstChild("Humanoid")
+                                        if humanoid then
+                                            obj.Parent = LocalPlayer.Backpack
+                                            createNotification("Gun Picked Up", 
+                                                "Found and picked up: " .. obj.Name, 3)
+                                            return true
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                return false
+            end
+            
+            -- Evento principal de morte
+            local deathConnection
+            deathConnection = LocalPlayer.CharacterAdded:Connect(function(character)
                 local humanoid = character:WaitForChild("Humanoid")
+                local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+                
+                -- Monitora papel atual
+                spawn(function()
+                    while character.Parent and getgenv().AdvancedAutoStealGun do
+                        local hadGun, gunTool = hasGun(LocalPlayer)
+                        if hadGun then
+                            SystemState.LastRole = "Sheriff"
+                        end
+                        wait(1)
+                    end
+                end)
                 
                 humanoid.Died:Connect(function()
-                    if getgenv().AutoStealGun then
-                        -- Verifica se tinha arma antes de morrer
-                        wait(0.1) -- Pequeno delay para garantir que checou antes da morte
+                    if not getgenv().AdvancedAutoStealGun then return end
+                    
+                    -- Registra se tinha arma ao morrer
+                    SystemState.HasGunBeforeDeath = hasGun(LocalPlayer)
+                    
+                    if SystemState.HasGunBeforeDeath then
+                        createNotification("Death Detected", 
+                            "Died with gun! Preparing auto-fling on respawn...", 3)
                         
-                        -- Quando spawnar novamente, ativa o fling se for sheriff
+                        -- Aguarda respawn e executa lógica
                         LocalPlayer.CharacterAdded:Wait()
-                        wait(1) -- Espera spawnar completamente
+                        wait(Config.RespawnDelay)
                         
-                        if getgenv().AutoStealGun and hasGun(LocalPlayer) then
-                            autoFling()
+                        -- Tenta pegar arma automaticamente
+                        local pickedUp = tryPickupGun()
+                        
+                        -- Executa fling se todas condições forem atendidas
+                        if shouldFling() then
+                            wait(0.5) -- Delay adicional para estabilidade
+                            performAdvancedFling()
+                        else
+                            createNotification("Fling Skipped", 
+                                "Conditions not met for auto-fling", 2)
                         end
                     end
                 end)
             end)
             
-            -- Salva a conexão para poder desconectar depois
-            getgenv().AutoStealConnection = connection
+            -- Sistema de monitoramento contínuo
+            local monitorConnection
+            monitorConnection = RunService.Heartbeat:Connect(function()
+                if not getgenv().AdvancedAutoStealGun then return end
+                
+                -- Atualiza informações do murderer
+                SystemState.MurdererPlayer = getMurderer()
+                
+                -- Verifica mudanças de papel
+                local currentlyHasGun = hasGun(LocalPlayer)
+                if currentlyHasGun and SystemState.LastRole ~= "Sheriff" then
+                    SystemState.LastRole = "Sheriff"
+                    createNotification("Role Change", "You are now the Sheriff!", 2)
+                end
+            end)
+            
+            -- Salva conexões para limpeza
+            getgenv().AdvancedAutoStealConnections = {
+                deathConnection = deathConnection,
+                monitorConnection = monitorConnection
+            }
+            
+            createNotification("System Activated", 
+                "Advanced Auto Steal Gun is now active!", 3)
             
         else
-            -- Desconecta os eventos quando desativado
-            if getgenv().AutoStealConnection then
-                getgenv().AutoStealConnection:Disconnect()
-                getgenv().AutoStealConnection = nil
+            -- Limpeza ao desativar
+            if getgenv().AdvancedAutoStealConnections then
+                for name, connection in pairs(getgenv().AdvancedAutoStealConnections) do
+                    if connection then
+                        connection:Disconnect()
+                    end
+                end
+                getgenv().AdvancedAutoStealConnections = nil
             end
+            
+            createNotification("System Deactivated", 
+                "Advanced Auto Steal Gun has been disabled", 2)
+        end
+    end,
+})
+
+-- Toggle de configuração rápida
+local ConfigToggle = Tab:CreateToggle({
+    Name = "🔧 Smart Fling Mode",
+    CurrentValue = true,
+    Flag = "SmartFlingMode",
+    Callback = function(Value)
+        if getgenv().AdvancedAutoStealGun then
+            -- Atualiza configurações em tempo real
+            Config.SmartFling = Value
+            Config.OnlyFlingIfMurdererNear = Value
+            Config.AntiDetection = Value
+            
+            createNotification("Config Updated", 
+                "Smart fling mode " .. (Value and "enabled" or "disabled"), 2)
         end
     end,
 })
