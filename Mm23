@@ -1968,7 +1968,7 @@ local AutoFlingMurderToggle = Tab:CreateToggle({
 
 -- Slider para ajustar poder do fling
 local FlingPowerSlider = Tab:CreateSlider({
-    Name = "⚙️ Poder do Fling",
+    Name = "fling power",
     Range = {10000, 100000},
     Increment = 5000,
     CurrentValue = FlingPower,
@@ -2058,7 +2058,7 @@ end
 
 -- Botão de emergência
 local EmergencyButton = Tab:CreateButton({
-    Name = "🚨 Parada de Emergência",
+    Name = "🚨 Emergency Stop",
     Callback = function()
         AutoFlingMurderEnabled = false
         AutoFlingMurderToggle:Set(false)
