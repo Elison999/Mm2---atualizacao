@@ -218,6 +218,93 @@ end
 end
 
 local TabMovement = Window:CreateTab("Movement", 4483362458)
+local GlitchSpeed = 33  -- Valor padrão
+local NormalSpeed = 16
+local ToggleEnabled = false
+local IsJumping = false
+
+local function SetSpeed(speed)
+local char = LocalPlayer.Character
+if char and char:FindFirstChildOfClass("Humanoid") then
+char:FindFirstChildOfClass("Humanoid").WalkSpeed = speed
+end
+end
+
+local function SetupHumanoid(humanoid)
+if not humanoid then return end
+humanoid.StateChanged:Connect(function(_, newState)
+if not ToggleEnabled then return end
+if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
+IsJumping = true
+elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
+IsJumping = false
+SetSpeed(NormalSpeed)
+end
+end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+local humanoid = char:WaitForChild("Humanoid", 5)
+SetupHumanoid(humanoid)
+SetSpeed(NormalSpeed)
+end)
+
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+SetupHumanoid(LocalPlayer.Character:FindFirstChild("Humanoid"))
+SetSpeed(NormalSpeed)
+end
+
+RunService.Heartbeat:Connect(function()
+if not ToggleEnabled then return end
+local char = LocalPlayer.Character
+if char and char:FindFirstChildOfClass("Humanoid") and IsJumping then
+local moving = char.Humanoid.MoveDirection.Magnitude > 0
+if moving then
+SetSpeed(GlitchSpeed)
+end
+end
+end)
+
+-- ✅ TOGGLE DO SPEED GLITCH
+TabMovement:CreateToggle({
+Name = "Glitch Speed (Mobile)",
+CurrentValue = false,
+Flag = "GlitchSpeedToggle",
+Callback = function(Value)
+ToggleEnabled = Value
+SetSpeed(NormalSpeed)
+end,
+})
+
+-- ✅ NOVO SLIDER PARA CONTROLAR A VELOCIDADE
+TabMovement:CreateSlider({
+Name = "Speed Glitch Velocity",
+Range = {16, 200},
+Increment = 1,
+Suffix = " Speed",
+CurrentValue = 33,
+Flag = "SpeedGlitchSlider",
+Callback = function(Value)
+GlitchSpeed = Value
+end,
+})
+
+-- ✅ SLIDER PARA VELOCIDADE NORMAL TAMBÉM
+TabMovement:CreateSlider({
+Name = "Normal Walk Speed",
+Range = {1, 50},
+Increment = 1,
+Suffix = " Speed",
+CurrentValue = 16,
+Flag = "NormalSpeedSlider",
+Callback = function(Value)
+NormalSpeed = Value
+-- Atualiza a velocidade atual se não estiver no speed glitch
+if not IsJumping and LocalPlayer.Character then
+SetSpeed(NormalSpeed)
+end
+end,
+})
 
 -- Variables
 local Players = game:GetService("Players")
@@ -340,94 +427,6 @@ Tab:CreateParagraph({
 
 -- Initialization
 setupJumpDetection()
-
-local GlitchSpeed = 33  -- Valor padrão
-local NormalSpeed = 16
-local ToggleEnabled = false
-local IsJumping = false
-
-local function SetSpeed(speed)
-local char = LocalPlayer.Character
-if char and char:FindFirstChildOfClass("Humanoid") then
-char:FindFirstChildOfClass("Humanoid").WalkSpeed = speed
-end
-end
-
-local function SetupHumanoid(humanoid)
-if not humanoid then return end
-humanoid.StateChanged:Connect(function(_, newState)
-if not ToggleEnabled then return end
-if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
-IsJumping = true
-elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
-IsJumping = false
-SetSpeed(NormalSpeed)
-end
-end)
-end
-
-LocalPlayer.CharacterAdded:Connect(function(char)
-local humanoid = char:WaitForChild("Humanoid", 5)
-SetupHumanoid(humanoid)
-SetSpeed(NormalSpeed)
-end)
-
-if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-SetupHumanoid(LocalPlayer.Character:FindFirstChild("Humanoid"))
-SetSpeed(NormalSpeed)
-end
-
-RunService.Heartbeat:Connect(function()
-if not ToggleEnabled then return end
-local char = LocalPlayer.Character
-if char and char:FindFirstChildOfClass("Humanoid") and IsJumping then
-local moving = char.Humanoid.MoveDirection.Magnitude > 0
-if moving then
-SetSpeed(GlitchSpeed)
-end
-end
-end)
-
--- ✅ TOGGLE DO SPEED GLITCH
-TabMovement:CreateToggle({
-Name = "Glitch Speed (Mobile)",
-CurrentValue = false,
-Flag = "GlitchSpeedToggle",
-Callback = function(Value)
-ToggleEnabled = Value
-SetSpeed(NormalSpeed)
-end,
-})
-
--- ✅ NOVO SLIDER PARA CONTROLAR A VELOCIDADE
-TabMovement:CreateSlider({
-Name = "Speed Glitch Velocity",
-Range = {16, 200},
-Increment = 1,
-Suffix = " Speed",
-CurrentValue = 33,
-Flag = "SpeedGlitchSlider",
-Callback = function(Value)
-GlitchSpeed = Value
-end,
-})
-
--- ✅ SLIDER PARA VELOCIDADE NORMAL TAMBÉM
-TabMovement:CreateSlider({
-Name = "Normal Walk Speed",
-Range = {1, 50},
-Increment = 1,
-Suffix = " Speed",
-CurrentValue = 16,
-Flag = "NormalSpeedSlider",
-Callback = function(Value)
-NormalSpeed = Value
--- Atualiza a velocidade atual se não estiver no speed glitch
-if not IsJumping and LocalPlayer.Character then
-SetSpeed(NormalSpeed)
-end
-end,
-})
 
 local TabInnocents = Window:CreateTab("Innocents", 4483362458)
 local autoRunEnabled = false
